@@ -1,0 +1,31 @@
+# Reproducible Windows x64 build environment for LearningModel 0.1.0.
+# Validated interpreter: CPython 3.14.5 (64-bit).
+#
+# These are the directly selected runtime and build-tool versions. Install into
+# a dedicated virtual environment; do not merge a developer environment into a
+# release build.
+
+PySide6_Essentials==6.11.1
+shiboken6==6.11.1
+PyMuPDF==1.27.2.3
+pytesseract==0.3.13
+Pillow==12.1.0
+reportlab==5.0.1
+pypdf==6.19.0
+packaging==26.3
+charset-normalizer==3.5.1
+
+# Build and verification only.  The full transitive closure is pinned because
+# hooks and bootloader tooling can materially change the produced bundle.
+PyInstaller==6.22.3
+pyinstaller-hooks-contrib==2026.7
+altgraph==0.17.5
+pefile==2024.8.26
+pywin32-ctypes==0.2.3
+setuptools==84.0.0
+pytest==9.1.1
+colorama==0.4.6
+iniconfig==2.3.0
+pluggy==1.6.0
+Pygments==2.21.0
+pip==26.1.1

@@ -1,0 +1,9 @@
+PySide6_Essentials>=6.7
+# Optional but recommended for attachment parsing:
+PyMuPDF>=1.24
+# pytesseract also requires installing the Tesseract OCR desktop engine.
+pytesseract>=0.3.10
+Pillow>=10
+# Local deterministic practice-paper generation and structural validation:
+reportlab>=4.2
+pypdf>=5.0

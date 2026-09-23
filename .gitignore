@@ -1,0 +1,36 @@
+# Local profiles and private material
+.env
+.env.*
+!.env.example
+app_data/
+learning_model_v1.json
+learning_records.json
+*.sqlite*
+*.db
+*.pem
+*.key
+*.pfx
+*.p12
+backups/
+logs/
+cache/
+exports/
+reference_materials/
+*.pdf
+*.docx
+*.log
+
+# Build output and local environments
+.venv*/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+build/
+dist/
+release/artifacts/
+recovery-child/
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

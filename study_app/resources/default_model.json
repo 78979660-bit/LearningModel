@@ -1,0 +1,21 @@
+{
+  "model_name": "learning_model_clean_v1",
+  "created_from": "clean-install",
+  "scale": "0-1",
+  "status_values": ["not_started", "learning", "learned", "reviewing"],
+  "update_rules_v1": {},
+  "subjects": [],
+  "initial_percent_assessment": {
+    "subjects": []
+  },
+  "warning_policy": {
+    "period_days": 3,
+    "period_benchmark_score": 55,
+    "stale_review_days": 6,
+    "bkt_model": {
+      "enabled": true,
+      "max_report_items": 8
+    }
+  }
+}
+

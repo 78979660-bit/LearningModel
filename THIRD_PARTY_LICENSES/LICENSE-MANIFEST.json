@@ -1,0 +1,295 @@
+{
+  "format_version": 1,
+  "source_lock": "requirements-build.lock.txt",
+  "distributions": [
+    {
+      "name": "PySide6_Essentials",
+      "version": "6.11.1",
+      "scope": "runtime",
+      "declared_license": "LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only",
+      "homepage": "",
+      "license_files": [
+        "PySide6_Essentials-6.11.1/licenses/LicenseRef-Qt-Commercial.txt"
+      ]
+    },
+    {
+      "name": "shiboken6",
+      "version": "6.11.1",
+      "scope": "runtime",
+      "declared_license": "LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only",
+      "homepage": "",
+      "license_files": [
+        "shiboken6-6.11.1/licenses/LicenseRef-Qt-Commercial.txt"
+      ]
+    },
+    {
+      "name": "PyMuPDF",
+      "version": "1.27.2.3",
+      "scope": "runtime",
+      "declared_license": "Dual Licensed - GNU AFFERO GPL 3.0 or Artifex Commercial License",
+      "homepage": "",
+      "license_files": [
+        "PyMuPDF-1.27.2.3/COPYING"
+      ]
+    },
+    {
+      "name": "pytesseract",
+      "version": "0.3.13",
+      "scope": "runtime",
+      "declared_license": "Apache License 2.0",
+      "homepage": "https://github.com/madmaze/pytesseract",
+      "license_files": [
+        "pytesseract-0.3.13/LICENSE"
+      ]
+    },
+    {
+      "name": "pillow",
+      "version": "12.1.0",
+      "scope": "runtime",
+      "declared_license": "MIT-CMU",
+      "homepage": "",
+      "license_files": [
+        "Pillow-12.1.0/licenses/LICENSE"
+      ]
+    },
+    {
+      "name": "reportlab",
+      "version": "5.0.1",
+      "scope": "runtime",
+      "declared_license": "BSD license (see license.txt for details), Copyright (c) 2000-2025, ReportLab Inc.",
+      "homepage": "https://www.reportlab.com/",
+      "license_files": [
+        "reportlab-5.0.1/licenses/LICENSE"
+      ]
+    },
+    {
+      "name": "pypdf",
+      "version": "6.19.0",
+      "scope": "runtime",
+      "declared_license": "BSD-3-Clause",
+      "homepage": "",
+      "license_files": [
+        "pypdf-6.19.0/licenses/LICENSE"
+      ]
+    },
+    {
+      "name": "packaging",
+      "version": "26.3",
+      "scope": "runtime",
+      "declared_license": "Apache-2.0 OR BSD-2-Clause",
+      "homepage": "",
+      "license_files": [
+        "packaging-26.3/licenses/LICENSE",
+        "packaging-26.3/licenses/LICENSE.APACHE",
+        "packaging-26.3/licenses/LICENSE.BSD",
+        "packaging-26.3/packaging/licenses/__init__.py",
+        "packaging-26.3/packaging/licenses/__pycache__/__init__.cpython-314.pyc",
+        "packaging-26.3/packaging/licenses/__pycache__/_spdx.cpython-314.pyc",
+        "packaging-26.3/packaging/licenses/_spdx.py"
+      ]
+    },
+    {
+      "name": "charset-normalizer",
+      "version": "3.5.1",
+      "scope": "runtime",
+      "declared_license": "MIT",
+      "homepage": "",
+      "license_files": [
+        "charset-normalizer-3.5.1/licenses/LICENSE"
+      ]
+    },
+    {
+      "name": "pyinstaller",
+      "version": "6.22.3",
+      "scope": "build-only",
+      "declared_license": "GPLv2-or-later with a special exception which allows to use PyInstaller to build and distribute non-free programs (including commercial ones)",
+      "homepage": "",
+      "license_files": [
+        "PyInstaller-6.22.3/licenses/COPYING.txt"
+      ]
+    },
+    {
+      "name": "pyinstaller-hooks-contrib",
+      "version": "2026.7",
+      "scope": "build-only",
+      "declared_license": "OSI Approved :: Apache Software License; OSI Approved :: GNU General Public License v2 (GPLv2)",
+      "homepage": "https://github.com/pyinstaller/pyinstaller-hooks-contrib",
+      "license_files": [
+        "pyinstaller-hooks-contrib-2026.7/licenses/LICENSE"
+      ]
+    },
+    {
+      "name": "altgraph",
+      "version": "0.17.5",
+      "scope": "build-only",
+      "declared_license": "MIT",
+      "homepage": "https://altgraph.readthedocs.io",
+      "license_files": [
+        "altgraph-0.17.5/LICENSE"
+      ]
+    },
+    {
+      "name": "pefile",
+      "version": "2024.8.26",
+      "scope": "build-only",
+      "declared_license": "MIT",
+      "homepage": "https://github.com/erocarrera/pefile",
+      "license_files": [
+        "pefile-2024.8.26/LICENSE"
+      ]
+    },
+    {
+      "name": "pywin32-ctypes",
+      "version": "0.2.3",
+      "scope": "build-only",
+      "declared_license": "BSD-3-Clause",
+      "homepage": "https://github.com/enthought/pywin32-ctypes",
+      "license_files": [
+        "pywin32-ctypes-0.2.3/LICENSE.txt"
+      ]
+    },
+    {
+      "name": "setuptools",
+      "version": "84.0.0",
+      "scope": "build-only",
+      "declared_license": "MIT",
+      "homepage": "",
+      "license_files": [
+        "setuptools-84.0.0/licenses/LICENSE",
+        "setuptools-84.0.0/LICENSE",
+        "setuptools-84.0.0/LICENSE-3",
+        "setuptools-84.0.0/licenses/LICENSE-4",
+        "setuptools-84.0.0/LICENSE-5",
+        "setuptools-84.0.0/licenses/LICENSE-6",
+        "setuptools-84.0.0/licenses/LICENSE-7",
+        "setuptools-84.0.0/licenses/LICENSE-8",
+        "setuptools-84.0.0/licenses/LICENSE-9",
+        "setuptools-84.0.0/licenses/LICENSE.APACHE",
+        "setuptools-84.0.0/licenses/LICENSE.BSD",
+        "setuptools-84.0.0/setuptools/_vendor/packaging/licenses/__init__.py",
+        "setuptools-84.0.0/setuptools/_vendor/packaging/licenses/__pycache__/__init__.cpython-314.pyc",
+        "setuptools-84.0.0/setuptools/_vendor/packaging/licenses/__pycache__/_spdx.cpython-314.pyc",
+        "setuptools-84.0.0/setuptools/_vendor/packaging/licenses/_spdx.py",
+        "setuptools-84.0.0/licenses/LICENSE-16",
+        "setuptools-84.0.0/licenses/LICENSE-17",
+        "setuptools-84.0.0/licenses/LICENSE.txt",
+        "setuptools-84.0.0/licenses/LICENSE-19",
+        "setuptools-84.0.0/setuptools/config/_validate_pyproject/NOTICE",
+        "setuptools-84.0.0/setuptools/config/NOTICE"
+      ]
+    },
+    {
+      "name": "pytest",
+      "version": "9.1.1",
+      "scope": "build-only",
+      "declared_license": "MIT",
+      "homepage": "",
+      "license_files": [
+        "pytest-9.1.1/licenses/LICENSE"
+      ]
+    },
+    {
+      "name": "colorama",
+      "version": "0.4.6",
+      "scope": "build-only",
+      "declared_license": "OSI Approved :: BSD License",
+      "homepage": "",
+      "license_files": [
+        "colorama-0.4.6/licenses/LICENSE.txt"
+      ]
+    },
+    {
+      "name": "iniconfig",
+      "version": "2.3.0",
+      "scope": "build-only",
+      "declared_license": "MIT",
+      "homepage": "",
+      "license_files": [
+        "iniconfig-2.3.0/licenses/LICENSE"
+      ]
+    },
+    {
+      "name": "pluggy",
+      "version": "1.6.0",
+      "scope": "build-only",
+      "declared_license": "MIT",
+      "homepage": "",
+      "license_files": [
+        "pluggy-1.6.0/licenses/LICENSE"
+      ]
+    },
+    {
+      "name": "Pygments",
+      "version": "2.21.0",
+      "scope": "build-only",
+      "declared_license": "BSD-2-Clause",
+      "homepage": "",
+      "license_files": [
+        "Pygments-2.21.0/licenses/AUTHORS",
+        "Pygments-2.21.0/licenses/LICENSE"
+      ]
+    },
+    {
+      "name": "pip",
+      "version": "26.1.1",
+      "scope": "build-only",
+      "declared_license": "MIT",
+      "homepage": "",
+      "license_files": [
+        "pip-26.1.1/licenses/AUTHORS.txt",
+        "pip-26.1.1/licenses/LICENSE.txt",
+        "pip-26.1.1/licenses/src/pip/_vendor/cachecontrol/LICENSE.txt",
+        "pip-26.1.1/licenses/src/pip/_vendor/certifi/LICENSE",
+        "pip-26.1.1/licenses/src/pip/_vendor/distlib/LICENSE.txt",
+        "pip-26.1.1/licenses/src/pip/_vendor/distro/LICENSE",
+        "pip-26.1.1/licenses/src/pip/_vendor/idna/LICENSE.md",
+        "pip-26.1.1/licenses/src/pip/_vendor/msgpack/COPYING",
+        "pip-26.1.1/licenses/src/pip/_vendor/packaging/LICENSE",
+        "pip-26.1.1/licenses/src/pip/_vendor/packaging/LICENSE.APACHE",
+        "pip-26.1.1/licenses/src/pip/_vendor/packaging/LICENSE.BSD",
+        "pip-26.1.1/licenses/src/pip/_vendor/pkg_resources/LICENSE",
+        "pip-26.1.1/licenses/src/pip/_vendor/platformdirs/LICENSE",
+        "pip-26.1.1/licenses/src/pip/_vendor/pygments/LICENSE",
+        "pip-26.1.1/licenses/src/pip/_vendor/pyproject_hooks/LICENSE",
+        "pip-26.1.1/licenses/src/pip/_vendor/requests/LICENSE",
+        "pip-26.1.1/licenses/src/pip/_vendor/resolvelib/LICENSE",
+        "pip-26.1.1/licenses/src/pip/_vendor/rich/LICENSE",
+        "pip-26.1.1/licenses/src/pip/_vendor/tomli/LICENSE",
+        "pip-26.1.1/licenses/src/pip/_vendor/tomli_w/LICENSE",
+        "pip-26.1.1/licenses/src/pip/_vendor/truststore/LICENSE",
+        "pip-26.1.1/licenses/src/pip/_vendor/urllib3/LICENSE.txt",
+        "pip-26.1.1/pip/_vendor/cachecontrol/LICENSE.txt",
+        "pip-26.1.1/pip/_vendor/certifi/LICENSE",
+        "pip-26.1.1/pip/_vendor/distlib/LICENSE.txt",
+        "pip-26.1.1/pip/_vendor/distro/LICENSE",
+        "pip-26.1.1/pip/_vendor/idna/LICENSE.md",
+        "pip-26.1.1/pip/_vendor/msgpack/COPYING",
+        "pip-26.1.1/pip/_vendor/packaging/LICENSE",
+        "pip-26.1.1/pip/_vendor/packaging/LICENSE.APACHE",
+        "pip-26.1.1/pip/_vendor/packaging/LICENSE.BSD",
+        "pip-26.1.1/pip/_vendor/packaging/licenses/__init__.py",
+        "pip-26.1.1/pip/_vendor/packaging/licenses/__pycache__/__init__.cpython-314.pyc",
+        "pip-26.1.1/pip/_vendor/packaging/licenses/__pycache__/_spdx.cpython-314.pyc",
+        "pip-26.1.1/pip/_vendor/packaging/licenses/_spdx.py",
+        "pip-26.1.1/pip/_vendor/pkg_resources/LICENSE",
+        "pip-26.1.1/pip/_vendor/platformdirs/LICENSE",
+        "pip-26.1.1/pip/_vendor/pygments/LICENSE",
+        "pip-26.1.1/pip/_vendor/pyproject_hooks/LICENSE",
+        "pip-26.1.1/pip/_vendor/requests/LICENSE",
+        "pip-26.1.1/pip/_vendor/resolvelib/LICENSE",
+        "pip-26.1.1/pip/_vendor/rich/LICENSE",
+        "pip-26.1.1/pip/_vendor/tomli/LICENSE",
+        "pip-26.1.1/pip/_vendor/tomli_w/LICENSE",
+        "pip-26.1.1/pip/_vendor/truststore/LICENSE",
+        "pip-26.1.1/pip/_vendor/urllib3/LICENSE.txt"
+      ]
+    }
+  ],
+  "release_blockers": [
+    {
+      "component": "PyMuPDF",
+      "status": "unresolved",
+      "reason": "Public redistribution requires a documented AGPL compliance decision or an applicable Artifex commercial license."
+    }
+  ]
+}

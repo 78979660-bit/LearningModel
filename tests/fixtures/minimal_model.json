@@ -1,0 +1,31 @@
+{
+  "model_name": "synthetic-test-model",
+  "scale": "0-1",
+  "subjects": [
+    {
+      "name": "测试学科",
+      "weight": 1,
+      "status": "learning",
+      "modules": [
+        {
+          "name": "测试模块",
+          "weight": 1,
+          "mastery": 0,
+          "status": "learning",
+          "topics": [
+            {
+              "name": "测试知识点",
+              "status": "not_started",
+              "mastery": 0,
+              "importance": 1,
+              "difficulty": 0.5,
+              "forgetting_risk": 0
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "initial_percent_assessment": {"subjects": []},
+  "warning_policy": {}
+}
