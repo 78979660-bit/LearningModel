@@ -1,6 +1,6 @@
 # 0.1.0 发布补充材料
 
-日期：2026-09-23。对应原安装候选包 SHA-256：`de5d24de92581dadba1775bac02627c26c88e29f91bb917d91a13bc88e588446`。安装包及应用运行代码未修改。
+日期：2026-09-23。本次收尾重建包含卸载选项和中文输入提示。最终安装包哈希见 RELEASE_ACCEPTANCE.md 和 Release 的 SHA256SUMS.txt。
 
 ## 已交付
 
@@ -8,7 +8,7 @@
 | --- | --- |
 | `LearningModel-0.1.0-third-party-sources.zip` | 35 个上游源码归档，归档共 370,667,752 字节，附版本/来源/哈希清单 |
 | `LearningModel-0.1.0-third-party-notices.zip` | 从已验证源码提取的 371 份许可或归属文本及对应清单 |
-| `LearningModel-0.1.0-Windows-QA.zip` | 原安装包、兼容 Windows PowerShell 5.1 的验收脚本、人工检查表 |
+| `LearningModel-0.1.0-Windows-QA.zip` | 最终候选安装包、兼容 Windows PowerShell 5.1 的验收脚本、人工检查表 |
 | `SUPPLEMENT-SHA256SUMS.txt` | 上述三份 ZIP 的 SHA-256 |
 
 这些材料附在仓库的 0.1.0 Release 草稿，草稿只对有权限的账号可见。正式发布时必须保留实际源码附件，不能用只有链接的清单代替。
@@ -33,6 +33,4 @@ Microsoft VC++ Runtime 保留专有再分发身份，不套用项目 AGPL，也�
 - 源码下载/许可提取的自动测试覆盖坏哈希、路径越界、缓存复用和许可原文保存。
 - 没有自动上传测试结果；交付 ZIP 排除了本机预检结果、用户名路径和日志。
 
-**未完成的项目：** 干净 Windows 10/11 的真实安装及完整界面验收。当前机器无现成虚拟机，负责人要求先准备验收包。因此没有将 Install 成功路径、Finish 成功路径或人工检查标记为已经通过。
-
-将来取得环境后，按 [验收步骤](CLEAN_WINDOWS_ACCEPTANCE.md) 操作。测试脚本不会安装开发工具、修改安全设置或删除已有学习数据。
+Windows 11 虚拟机真实安装、主要界面和卸载重装检查已经执行；结果及未覆盖项目见 [验收说明](RELEASE_ACCEPTANCE.md)。旧开发主机 Preflight 拒绝结果只用于验证工具保护。验收包仍可用于后续独立机器复核。

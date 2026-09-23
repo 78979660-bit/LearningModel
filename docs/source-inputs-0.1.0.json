@@ -1,6 +1,6 @@
 {
-  "installer_sha256": "de5d24de92581dadba1775bac02627c26c88e29f91bb917d91a13bc88e588446",
-  "note": "First-party Python inputs compared with retained PyInstaller Analysis TOC and build working copy; this is not a bit-for-bit rebuild attestation.",
+  "installer_sha256": "46193d253e1f0c55b082c116dbde1c5e2c314aaa654f20a78f5276abea27cd2e",
+  "note": "First-party Python inputs checked against the final PyInstaller Analysis TOC; built from this source tree. Not a bit-for-bit reproducibility attestation.",
   "files": [
     {
       "path": "learning_bkt.py",
@@ -456,7 +456,7 @@
     },
     {
       "path": "study_app/ui/study_plan_page.py",
-      "sha256": "c6c0ae2f062faa6aa9efe444c4a0a0c74cf83f1b23a19cb43e8926a373ddcdc6"
+      "sha256": "2fa1ca06d67271b8b11da11ace78f523a81d492cbd35a3bf92d57787be9ec248"
     },
     {
       "path": "study_app/ui/subject_management_dialog.py",

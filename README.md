@@ -6,7 +6,7 @@
 
 ## 当前发布状态
 
-源码已按开源方向整理。0.1.0 安装包目前为 **Release 草稿**，尚无公开下载版本。已准备第三方源码、许可补充材料和 [干净 Windows 验收包](docs/CLEAN_WINDOWS_ACCEPTANCE.md)。干净系统验收尚未实际执行，候选包未签名；请勿将源码公开理解为安装包已经通过全部发布验收。
+源码已按开源方向整理。0.1.0 安装包目前为 **Release 草稿**，尚无公开下载版本。已准备第三方源码、许可补充材料和 [干净 Windows 验收包](docs/CLEAN_WINDOWS_ACCEPTANCE.md)。已在 Windows 11 虚拟机完成主要流程验收，详情见 [验收结果与限制](docs/RELEASE_ACCEPTANCE.md)。候选包未签名，尚未完成 Windows 10、多档 DPI 和外部服务完整验收。
 
 ## 从源码启动
 

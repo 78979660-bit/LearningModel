@@ -1,5 +1,5 @@
 {
-  "installer_sha256": "de5d24de92581dadba1775bac02627c26c88e29f91bb917d91a13bc88e588446",
+  "installer_sha256": "46193d253e1f0c55b082c116dbde1c5e2c314aaa654f20a78f5276abea27cd2e",
   "files": [
     {
       "path": "_asyncio.pyd",
