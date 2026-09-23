@@ -1,5 +1,7 @@
 # 第三方源码与许可定位
 
+2026-09-23 更新：下列定位工作已落实为 35 个实际源码归档和 371 份许可/归属材料，见 [发布补充材料](RELEASE_SUPPLEMENT.md) 及 `third-party-source-manifest.json`。原 wheel 许可收集结果继续保留作为历史记录；新增 `THIRD_PARTY_LICENSES/upstream` 补齐 Qt/PySide 开源许可文本。
+
 项目许可不覆盖下列上游作品。应按 `requirements-build.lock.txt` 和实际构建清单取得准确版本；链接是收集入口，不表示已将完整对应源码镜像到本仓库。
 
 | 组件 | 版本 | 上游入口 |

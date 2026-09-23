@@ -1,0 +1,400 @@
+{
+  "installer_sha256": "de5d24de92581dadba1775bac02627c26c88e29f91bb917d91a13bc88e588446",
+  "files": [
+    {
+      "path": "_asyncio.pyd",
+      "provider": "CPython 3.14.5 and dependencies; see PCbuild/get_externals.bat and locked Python packages",
+      "sha256": "cc27a21453b309197030b5fa8051a8a9c89aec79f9b81ee4ea2a2551ac0f912f"
+    },
+    {
+      "path": "_bz2.pyd",
+      "provider": "CPython 3.14.5 and dependencies; see PCbuild/get_externals.bat and locked Python packages",
+      "sha256": "ef5277eb670219274e7d1e92190ddf7f4bb94d4922ca1c1a12efadfd2c4c66f6"
+    },
+    {
+      "path": "_ctypes.pyd",
+      "provider": "CPython 3.14.5 and dependencies; see PCbuild/get_externals.bat and locked Python packages",
+      "sha256": "fd4847b99cd504a66bdc4739f15181b562774e6736bb88775880b073276dede1"
+    },
+    {
+      "path": "_decimal.pyd",
+      "provider": "CPython 3.14.5 and dependencies; see PCbuild/get_externals.bat and locked Python packages",
+      "sha256": "1ee2247153ec6c6e5b3b49402f294b2b7325385ad489a5522e6fa9b406575e8b"
+    },
+    {
+      "path": "_elementtree.pyd",
+      "provider": "CPython 3.14.5 and dependencies; see PCbuild/get_externals.bat and locked Python packages",
+      "sha256": "1f8259cc74aed52e4cd2de6cb1b54bec8b1725a84760c1c5b30ded49f652824a"
+    },
+    {
+      "path": "_hashlib.pyd",
+      "provider": "CPython 3.14.5 and dependencies; see PCbuild/get_externals.bat and locked Python packages",
+      "sha256": "9bc6ffcd2ab4ac87c4035f18b432e888d0d4a36795c97bf3f28ddf32cc34e40f"
+    },
+    {
+      "path": "_lzma.pyd",
+      "provider": "CPython 3.14.5 and dependencies; see PCbuild/get_externals.bat and locked Python packages",
+      "sha256": "39e5bc3624a26c9f6ad2e2df412543b0bd697a1d75338b44fe99763358d6d8cb"
+    },
+    {
+      "path": "_multiprocessing.pyd",
+      "provider": "CPython 3.14.5 and dependencies; see PCbuild/get_externals.bat and locked Python packages",
+      "sha256": "a8c15ee29f60536e00fd7c26c0315e062c4f018e2e46e7f6eb65c1fed0d886a4"
+    },
+    {
+      "path": "_overlapped.pyd",
+      "provider": "CPython 3.14.5 and dependencies; see PCbuild/get_externals.bat and locked Python packages",
+      "sha256": "0e8b684fdcc8c6de88bd4b92b6ed44a6fd917949c98b0691285e0cf6c760dc36"
+    },
+    {
+      "path": "_queue.pyd",
+      "provider": "CPython 3.14.5 and dependencies; see PCbuild/get_externals.bat and locked Python packages",
+      "sha256": "acf60e246f6a83a914fb6c411f04bd3eb8bba83070612ca44af99d74f06c5524"
+    },
+    {
+      "path": "_socket.pyd",
+      "provider": "CPython 3.14.5 and dependencies; see PCbuild/get_externals.bat and locked Python packages",
+      "sha256": "65caaa6f35c329d901ba3f3d9f7fc4d7443dcde89907dccbd6748786cc517476"
+    },
+    {
+      "path": "_sqlite3.pyd",
+      "provider": "CPython 3.14.5 and dependencies; see PCbuild/get_externals.bat and locked Python packages",
+      "sha256": "e33fd2ccfd0bd878d50f5c093a56e324ad146e03ebd47e4dc81d6c833badedbe"
+    },
+    {
+      "path": "_ssl.pyd",
+      "provider": "CPython 3.14.5 and dependencies; see PCbuild/get_externals.bat and locked Python packages",
+      "sha256": "12e31f50739e33b115c7e10febf1ccedeb5d9353cd539c608cc5dd164bee17a7"
+    },
+    {
+      "path": "_uuid.pyd",
+      "provider": "CPython 3.14.5 and dependencies; see PCbuild/get_externals.bat and locked Python packages",
+      "sha256": "635d6c46bbf6b86dd30a802bd1c6e214dabccb44d1452c52f0b557ae5bcc6f68"
+    },
+    {
+      "path": "_wmi.pyd",
+      "provider": "CPython 3.14.5 and dependencies; see PCbuild/get_externals.bat and locked Python packages",
+      "sha256": "6fb2c6316628664319b2abcf961f0cbbac809966a65b653c86e7864ad8701496"
+    },
+    {
+      "path": "_zstd.pyd",
+      "provider": "CPython 3.14.5 and dependencies; see PCbuild/get_externals.bat and locked Python packages",
+      "sha256": "54e6acfbc1cb27c9afea0e133cadac68b89869ff1a14eb0c678d40eb9c655347"
+    },
+    {
+      "path": "charset_normalizer/cd.cp314-win_amd64.pyd",
+      "provider": "CPython 3.14.5 and dependencies; see PCbuild/get_externals.bat and locked Python packages",
+      "sha256": "f234a1dbd19363a3260d6a1e2d82ec1c6e30b2e23d6057796021231d668d978a"
+    },
+    {
+      "path": "charset_normalizer/md.cp314-win_amd64.pyd",
+      "provider": "CPython 3.14.5 and dependencies; see PCbuild/get_externals.bat and locked Python packages",
+      "sha256": "faf5cb006492b3526abcbfdac9a0d39cd52d32425292db9d2a210d8b44d9d925"
+    },
+    {
+      "path": "libcrypto-3.dll",
+      "provider": "CPython 3.14.5 and dependencies; see PCbuild/get_externals.bat and locked Python packages",
+      "sha256": "8b27ebae75cc99f20075322446af36c9ffcb4e3b400a77d712ef43f007f47f7d"
+    },
+    {
+      "path": "libffi-8.dll",
+      "provider": "CPython 3.14.5 and dependencies; see PCbuild/get_externals.bat and locked Python packages",
+      "sha256": "eff52743773eb550fcc6ce3efc37c85724502233b6b002a35496d828bd7b280a"
+    },
+    {
+      "path": "libssl-3.dll",
+      "provider": "CPython 3.14.5 and dependencies; see PCbuild/get_externals.bat and locked Python packages",
+      "sha256": "56dd50fb903b860ace831d0cd6c6250cd57e8655867c3a0fa16eac2d4cc0ba0b"
+    },
+    {
+      "path": "PIL/_avif.cp314-win_amd64.pyd",
+      "provider": "Pillow 12.1.0; native component notices retained in Pillow LICENSE",
+      "sha256": "7ab7864c7c5241827775b3574888687b42876a5291c180134428b2d4efc9e90f"
+    },
+    {
+      "path": "PIL/_imaging.cp314-win_amd64.pyd",
+      "provider": "Pillow 12.1.0; native component notices retained in Pillow LICENSE",
+      "sha256": "9dcf7603d7cbcaf959efc4a03131818c029c00d9a5af66654ccefc75aebd2d64"
+    },
+    {
+      "path": "PIL/_imagingcms.cp314-win_amd64.pyd",
+      "provider": "Pillow 12.1.0; native component notices retained in Pillow LICENSE",
+      "sha256": "c0ee398b14e2bc0b3871039b88c3b004e26fe7c477e66ef243969c47c5f1a255"
+    },
+    {
+      "path": "PIL/_imagingmath.cp314-win_amd64.pyd",
+      "provider": "Pillow 12.1.0; native component notices retained in Pillow LICENSE",
+      "sha256": "f7f2b978ff8b63348bf3571d4a9d62fc5867e54ebcbead34ab3201ef9d27b8dd"
+    },
+    {
+      "path": "PIL/_imagingtk.cp314-win_amd64.pyd",
+      "provider": "Pillow 12.1.0; native component notices retained in Pillow LICENSE",
+      "sha256": "0baad511efedf0f5ef476382a6bb67162c0b8254fa9d35320ae00545bf4af186"
+    },
+    {
+      "path": "PIL/_webp.cp314-win_amd64.pyd",
+      "provider": "Pillow 12.1.0; native component notices retained in Pillow LICENSE",
+      "sha256": "7ccebe450b35317ba62e9427e57475eb51e4c49b273333538411bee7622c53d3"
+    },
+    {
+      "path": "pyexpat.pyd",
+      "provider": "CPython 3.14.5 and dependencies; see PCbuild/get_externals.bat and locked Python packages",
+      "sha256": "9349be352300fef4b16da0574c670b174d75094574ab51f3d385767d1e3dfc0d"
+    },
+    {
+      "path": "pymupdf/_extra.pyd",
+      "provider": "PyMuPDF 1.27.2.3 / MuPDF 1.27.2",
+      "sha256": "afb79d2467369966b3168eceff477ab443056657aef2000e87e4a806246a3802"
+    },
+    {
+      "path": "pymupdf/_mupdf.pyd",
+      "provider": "PyMuPDF 1.27.2.3 / MuPDF 1.27.2",
+      "sha256": "d1933283d68dd9aaa683318c0ee4d548e4a8fce44eab0eddbd779595d59fe79d"
+    },
+    {
+      "path": "pymupdf/mupdfcpp64.dll",
+      "provider": "PyMuPDF 1.27.2.3 / MuPDF 1.27.2",
+      "sha256": "11756fb3332d65025afefbb76f8a10c701a3e037acfec56f5a6f5960aaf50de3"
+    },
+    {
+      "path": "PySide6/MSVCP140.dll",
+      "provider": "Microsoft Visual C++ Runtime (proprietary redistributable; not AGPL)",
+      "sha256": "708dd7bbc7bd23bce9e93f7837a70c2dd7ad55cff43801e92c0f7fcd7dda47cd"
+    },
+    {
+      "path": "PySide6/MSVCP140_1.dll",
+      "provider": "Microsoft Visual C++ Runtime (proprietary redistributable; not AGPL)",
+      "sha256": "b2113956aa3fcb9decfe65be1ee7829f8e3ae0899633ae89fe04888ada201594"
+    },
+    {
+      "path": "PySide6/MSVCP140_2.dll",
+      "provider": "Microsoft Visual C++ Runtime (proprietary redistributable; not AGPL)",
+      "sha256": "1b806b427ffb573deff8478cf6fe336465fe2c67e0919bb95f452b6f31d25736"
+    },
+    {
+      "path": "PySide6/opengl32sw.dll",
+      "provider": "Mesa 11.2.2 / LLVM 3.6.2 (embedded version strings)",
+      "sha256": "4a7d90f91fdecb5df7b426bc2d05974b8d7ffa450af2d1f93f3eca05800718da"
+    },
+    {
+      "path": "PySide6/plugins/generic/qtuiotouchplugin.dll",
+      "provider": "Qt / PySide6 6.11.1",
+      "sha256": "1ee2810eef83dbb2740d4f796f8149dc5752ffd3dd60e39796a9a4d6a6a0ae38"
+    },
+    {
+      "path": "PySide6/plugins/iconengines/qsvgicon.dll",
+      "provider": "Qt / PySide6 6.11.1",
+      "sha256": "dd60826f1959faa7ea137e00959717450da9f2e0c151054daeff1e9d1226fab2"
+    },
+    {
+      "path": "PySide6/plugins/imageformats/qgif.dll",
+      "provider": "Qt / PySide6 6.11.1",
+      "sha256": "8b8dea2abaed333f1fbbdf3c8867ceb6040722c88a1fb81ea451f8b8bc9e8ee0"
+    },
+    {
+      "path": "PySide6/plugins/imageformats/qicns.dll",
+      "provider": "Qt / PySide6 6.11.1",
+      "sha256": "6a5aed435989d54234c16581e66f6a59137bfccd180565a217a8676bcda6dc8d"
+    },
+    {
+      "path": "PySide6/plugins/imageformats/qico.dll",
+      "provider": "Qt / PySide6 6.11.1",
+      "sha256": "f81378dd51392ff0d3ae094d5e59dfc4fa664a0ef4d756d6ed40584f90af2758"
+    },
+    {
+      "path": "PySide6/plugins/imageformats/qjpeg.dll",
+      "provider": "Qt / PySide6 6.11.1",
+      "sha256": "97af9ceaf3ebefefeb7aede27ae07b73ae1d2ed479427beebf61c58654361d43"
+    },
+    {
+      "path": "PySide6/plugins/imageformats/qsvg.dll",
+      "provider": "Qt / PySide6 6.11.1",
+      "sha256": "d4100055c3a4d6c1bca5e303e3d2049bde54d4e916442ee0a3e9b4dfa7d416fc"
+    },
+    {
+      "path": "PySide6/plugins/imageformats/qtga.dll",
+      "provider": "Qt / PySide6 6.11.1",
+      "sha256": "50f0e6ff9b7fca9386ccad52eb5e83466774e6282c9532b03b11e5a64951dffb"
+    },
+    {
+      "path": "PySide6/plugins/imageformats/qtiff.dll",
+      "provider": "Qt / PySide6 6.11.1",
+      "sha256": "087a3425962e838c35c9073bdf8de13712466e9b9590717666af7839db068dba"
+    },
+    {
+      "path": "PySide6/plugins/imageformats/qwbmp.dll",
+      "provider": "Qt / PySide6 6.11.1",
+      "sha256": "28a6447d44169acbf2eab38c475dc0aa9e32abb3f29f72257726497353b9bf63"
+    },
+    {
+      "path": "PySide6/plugins/imageformats/qwebp.dll",
+      "provider": "Qt / PySide6 6.11.1",
+      "sha256": "3e2bf546a3885cbe3e2b64058b1c58377d3c8822f51b37ba967f61e8054d7719"
+    },
+    {
+      "path": "PySide6/plugins/networkinformation/qnetworklistmanager.dll",
+      "provider": "Qt / PySide6 6.11.1",
+      "sha256": "aeef84e74d3114f62f4650305b403ef9f81e8c05bc67c86683d999c5c1243926"
+    },
+    {
+      "path": "PySide6/plugins/platforms/qdirect2d.dll",
+      "provider": "Qt / PySide6 6.11.1",
+      "sha256": "f099af483b0d71a6a028bc15ad98a407e4c820400e6626cdc8e66b5f5e4cfed2"
+    },
+    {
+      "path": "PySide6/plugins/platforms/qminimal.dll",
+      "provider": "Qt / PySide6 6.11.1",
+      "sha256": "97d81b9ee7cbbeb68e46eefce24d4b929b7a24cc646cebe3d4d03e2734f97935"
+    },
+    {
+      "path": "PySide6/plugins/platforms/qoffscreen.dll",
+      "provider": "Qt / PySide6 6.11.1",
+      "sha256": "426266e8ba0ea07c416616ad9973702fe126d4559cb2ee11e1c9bdbae85ba755"
+    },
+    {
+      "path": "PySide6/plugins/platforms/qwindows.dll",
+      "provider": "Qt / PySide6 6.11.1",
+      "sha256": "54d736de022f707e9f7f555e4c9f9e993253cd5b0ee2364e6a9458c180828c42"
+    },
+    {
+      "path": "PySide6/plugins/styles/qmodernwindowsstyle.dll",
+      "provider": "Qt / PySide6 6.11.1",
+      "sha256": "9af96b09ebaf7ff13e22c70bf69b9c3f226f069375d1a9f9efd63e944e43f5fb"
+    },
+    {
+      "path": "PySide6/plugins/tls/qcertonlybackend.dll",
+      "provider": "Qt / PySide6 6.11.1",
+      "sha256": "45b9f59593a1567f7d6725ddfa53f667f8f26b7795b1e2d0e1080a4025bafc02"
+    },
+    {
+      "path": "PySide6/plugins/tls/qopensslbackend.dll",
+      "provider": "Qt / PySide6 6.11.1",
+      "sha256": "c7222880a7defe7a5c84f5871cdc7e34df22f3de6646026683042fab5c22b561"
+    },
+    {
+      "path": "PySide6/plugins/tls/qschannelbackend.dll",
+      "provider": "Qt / PySide6 6.11.1",
+      "sha256": "d09487a64be0e1d4545a8230e7fe05d163375610adf175407a6742944f16deb9"
+    },
+    {
+      "path": "PySide6/pyside6.abi3.dll",
+      "provider": "Qt / PySide6 6.11.1",
+      "sha256": "d4072be872b31f3748de5e6c28cb2976dafbf063d3ccfa38e5dabda29babcdaf"
+    },
+    {
+      "path": "PySide6/Qt6Core.dll",
+      "provider": "Qt / PySide6 6.11.1",
+      "sha256": "65fe6224b6c47a15b058738031d31dce9928c4d7a58e1b8db6434f6f5cddd702"
+    },
+    {
+      "path": "PySide6/Qt6Gui.dll",
+      "provider": "Qt / PySide6 6.11.1",
+      "sha256": "cd071161ad325ff2de92b0e33d71334ef20712544796949623ce92dfb3957e90"
+    },
+    {
+      "path": "PySide6/Qt6Network.dll",
+      "provider": "Qt / PySide6 6.11.1",
+      "sha256": "dfd0dd852274a5fe9b3c7d2dd9fffe7e2117d28c10fc862174d6675d42395177"
+    },
+    {
+      "path": "PySide6/Qt6Svg.dll",
+      "provider": "Qt / PySide6 6.11.1",
+      "sha256": "a7352e8062d02e2108e37db4050fb3315d3c03c7d36acdc24b98b9a6c129c1de"
+    },
+    {
+      "path": "PySide6/Qt6Widgets.dll",
+      "provider": "Qt / PySide6 6.11.1",
+      "sha256": "5a9f37dedd3dc5bcc1a4bb8ea919c49fc62df751a1450accc34379eb6710eab6"
+    },
+    {
+      "path": "PySide6/QtCore.pyd",
+      "provider": "Qt / PySide6 6.11.1",
+      "sha256": "be52341a5df1f76ecca2fb1e94eb429dfa46f0b659ed6536f25119b565b21ea8"
+    },
+    {
+      "path": "PySide6/QtGui.pyd",
+      "provider": "Qt / PySide6 6.11.1",
+      "sha256": "f0549716b10a8b4fbd5c6c041f36af215223809f919f4c4722d44cc199d5c593"
+    },
+    {
+      "path": "PySide6/QtNetwork.pyd",
+      "provider": "Qt / PySide6 6.11.1",
+      "sha256": "3953a86c9545ad8fa1cf1dec27085dd357838464cd6e2131c9963caad6234b67"
+    },
+    {
+      "path": "PySide6/QtWidgets.pyd",
+      "provider": "Qt / PySide6 6.11.1",
+      "sha256": "85cb6c2181b4b09887a7d8507dd950844d1b8f74a9c4002c7b71169f75bf6fda"
+    },
+    {
+      "path": "PySide6/VCRUNTIME140.dll",
+      "provider": "Microsoft Visual C++ Runtime (proprietary redistributable; not AGPL)",
+      "sha256": "c6e841078cd352299a58925991e2552f7251b046253ba895b3ad50cd5cd32ec6"
+    },
+    {
+      "path": "PySide6/VCRUNTIME140_1.dll",
+      "provider": "Microsoft Visual C++ Runtime (proprietary redistributable; not AGPL)",
+      "sha256": "b322e382ea249b50009f14a9a71ad16729eb6e4b58a8d3b3be6ac66ea6342a22"
+    },
+    {
+      "path": "python3.dll",
+      "provider": "CPython 3.14.5 and dependencies; see PCbuild/get_externals.bat and locked Python packages",
+      "sha256": "f3d0cd260a46a9617a8b1d4d5e8703278478c22a910165bffb4e4ddf6562d93f"
+    },
+    {
+      "path": "python314.dll",
+      "provider": "CPython 3.14.5 and dependencies; see PCbuild/get_externals.bat and locked Python packages",
+      "sha256": "18310593c50ad109fc5c95db1fd5c92ecec9e1bfc66c976df9fc11dd62616d5a"
+    },
+    {
+      "path": "select.pyd",
+      "provider": "CPython 3.14.5 and dependencies; see PCbuild/get_externals.bat and locked Python packages",
+      "sha256": "8c3ee20776d8eb7c441f2006ed46b9ba932060c6b66df4c1e156dcf7738d56ce"
+    },
+    {
+      "path": "shiboken6/MSVCP140.dll",
+      "provider": "Microsoft Visual C++ Runtime (proprietary redistributable; not AGPL)",
+      "sha256": "005f2324c7ff79bbe9a44992b0708abb4c871bd24bcc7a34aca5eab4439c1f4a"
+    },
+    {
+      "path": "shiboken6/Shiboken.pyd",
+      "provider": "Shiboken6 6.11.1",
+      "sha256": "0e2c5318c5ac60a016a12230bbb1f6a9d990c45cbf4a7c4af24aefb5ab7dc40a"
+    },
+    {
+      "path": "shiboken6/shiboken6.abi3.dll",
+      "provider": "Shiboken6 6.11.1",
+      "sha256": "47f4f9b44c95037565dd14f4be04f350f20c53c05483b750e0be867c39a7441e"
+    },
+    {
+      "path": "shiboken6/VCRUNTIME140.dll",
+      "provider": "Microsoft Visual C++ Runtime (proprietary redistributable; not AGPL)",
+      "sha256": "8d9c679c825c5fff298d66c41af30f35c289fc101868dfc9635547bada0daba6"
+    },
+    {
+      "path": "shiboken6/VCRUNTIME140_1.dll",
+      "provider": "Microsoft Visual C++ Runtime (proprietary redistributable; not AGPL)",
+      "sha256": "e4d7ea5f4f4ff6d0c208e693853617cdef0ad71cfe5dd5c3ae16c8a6b64c18ea"
+    },
+    {
+      "path": "sqlite3.dll",
+      "provider": "CPython 3.14.5 and dependencies; see PCbuild/get_externals.bat and locked Python packages",
+      "sha256": "d711c289bba08259fa56fc20d41bf346dfefd1a927a7d538b8fc0dd75719d331"
+    },
+    {
+      "path": "unicodedata.pyd",
+      "provider": "CPython 3.14.5 and dependencies; see PCbuild/get_externals.bat and locked Python packages",
+      "sha256": "a7a2bfeed5d0480d8c458b3a61ee32c478ae10c694e8be61c3ba0e8cc2a6e1c6"
+    },
+    {
+      "path": "VCRUNTIME140.dll",
+      "provider": "Microsoft Visual C++ Runtime (proprietary redistributable; not AGPL)",
+      "sha256": "052ad6a20d375957e82aa6a3c441ea548d89be0981516ca7eb306e063d5027f4"
+    },
+    {
+      "path": "VCRUNTIME140_1.dll",
+      "provider": "Microsoft Visual C++ Runtime (proprietary redistributable; not AGPL)",
+      "sha256": "6a99bc0128e0c7d6cbbf615fcc26909565e17d4ca3451b97f8987f9c6acbc6c8"
+    }
+  ]
+}

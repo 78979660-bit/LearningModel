@@ -27,7 +27,7 @@ pwsh -NoProfile -File tools/build_release.ps1
 
 产物位于 `dist/LearningModel` 和 `release/artifacts`。PyInstaller 程序目录需要整体保留。数据库、密钥及个人 JSON 不属于构建输入。
 
-脚本保留了 `-PublicRelease` 的拒绝执行保护。开源许可已选定，但在完成第三方对应源码材料和实际安装包验收前，不能把这个开关改为无条件放行。普通构建参数可用于本地测试。
+脚本保留了 `-PublicRelease` 的拒绝执行保护。开源许可已选定，第三方源码材料已收集，但干净 Windows 验收尚未实际执行，不能把这个开关改为无条件放行。普通构建参数可用于本地测试；正式分发应同时提供源码和许可附件。
 
 ## 与已有 0.1.0 候选包的关系
 
