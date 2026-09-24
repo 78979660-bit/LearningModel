@@ -33,7 +33,7 @@ function Get-RelativePathSafe {
 $failures = [System.Collections.Generic.List[string]]::new()
 
 if ($PublicRelease) {
-    Add-Failure $failures 'PUBLIC RELEASE BLOCKED: AGPL selected; binary corresponding-source materials and clean Windows validation remain incomplete. See docs/OPEN_SOURCE.md.'
+    Add-Failure $failures 'PUBLIC RELEASE BLOCKED: draft prerelease workflow; see docs/RELEASE_ACCEPTANCE.md for completed and outstanding validation.'
 }
 
 if (-not (Test-Path -LiteralPath $distRoot -PathType Container)) {

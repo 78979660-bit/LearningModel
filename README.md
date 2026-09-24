@@ -10,23 +10,21 @@
 
 ## 主要功能
 
-这款应用包含了很多很有意思的功能，包括但不限于：
+### 学习助理
 
-一、学习助理
+配置自己的 AI 服务后，可以使用学习助理辅助规划学科内容、生成学习计划建议、识别作业中的做题信息。涉及写入学习记录的操作需要先核对并确认；外部 AI 服务的完整流程仍在测试中。
 
-这是本应用的核心功能！通过接入您自己的API，就可以使用LLM辅助学习啦！学习助理可以帮助您规划学科的具体学习内容，编排每日的学习计划，检查您的作业并更新掌握度，之后还会有更多更好玩的功能！
+### 学习计划
 
-二、学习计划
+应用结合已有学习记录、知识点掌握度和遗忘风险安排复习任务，并可按当天可用时间预览和保存计划。
 
-通过分析您在本学科内不同知识模块的掌握情况和每个模块的复习次数和频率，学习计划将会为您提供个性化的定制学习计划，帮助您最大限度的复习巩固已学内容。
+### 学习记录
 
-三、学习记录
+在“新增记录”中填写学习内容、做题情况和错因，也可以选择本机材料作为附件。系统会尝试识别题目与作答结果；确认并保存记录后，相关证据才会用于更新掌握度。附件只保存本机文件路径，不会自动复制原文件到数据库。
 
-您可以将学习资料，作业情况，教材PDF上传给学习助理，助理将会自动帮您整理归类进用户数据库，并更新您的掌握度情况，从而更直观地反应您的学习情况！
+### 知识图谱
 
-四、知识图谱
-
-应用内有专门的学习图谱界面，您不仅可以直观地看见每个章节的先后学习关系，还可以通过点击图框，看见每个章节的掌握度情况！
+图谱展示章节及已确认的先修关系。点击章节可查看学习状态、覆盖情况和掌握度；缺少评估证据时会显示“待评估”。
 
 ## 下载与体验
 
@@ -34,7 +32,7 @@
 
 👉 [下载 Windows x64 安装包](https://github.com/78979660-bit/LearningModel/releases/download/v0.1.0/LearningModel-Setup-0.1.0-x64.exe)
 
-安装后，可在应用内引入学科，开始安排学习计划。
+安装后，可在应用内引入学科并记录实际学习情况。新学科尚无学习覆盖时，知识点不会自动进入计划候选；补充能关联知识点的学习记录后，再尝试生成计划建议。
 
 这是一个仍在成长中的项目。目前已在 Windows 11 虚拟机中验证主要使用流程，安装包尚未进行代码签名。
 
@@ -42,13 +40,14 @@
 
 ## 从源码运行
 
-如果你想参与开发，或看看学习模型是如何工作的，可以从源码启动。
+如果你想参与开发，或看看学习模型是如何工作的，可以从源码启动。下方命令使用[公开安装包对应的源码提交](https://github.com/78979660-bit/LearningModel/tree/8aeaf92bc786adc517b8d2569b291cdad79243c1)，版本关系见 [构建说明](docs/BUILDING.md#与公开-v010-安装包的关系)。
 
 当前验证环境为 Windows x64、CPython 3.14.5。在 PowerShell 中执行：
 
 ```powershell
 git clone https://github.com/78979660-bit/LearningModel.git
 cd LearningModel
+git checkout 8aeaf92bc786adc517b8d2569b291cdad79243c1
 py -3.14 -m venv .venv-build
 & .\.venv-build\Scripts\python.exe -m pip install -r requirements-build.lock.txt
 & .\.venv-build\Scripts\python.exe run_study_app.pyw
@@ -56,16 +55,17 @@ py -3.14 -m venv .venv-build
 
 首次启动使用空记录和干净默认模型。通过应用内学科管理引入学科。用户数据保存在 `%LOCALAPPDATA%\LearningModel`。
 
-OCR 需要另外配置 Tesseract；AI 服务密钥由用户自行设置。源码不包含密钥或个人学习记录。
+OCR 需要另外配置 Tesseract；ChatGPT 桌面桥接需要对应桌面应用；AI 服务密钥由用户自行设置。不使用这些功能时，无需提前配置。
 
-## 测试与构建
+## 开发与构建
+
+运行测试：
 
 ```powershell
 & .\.venv-build\Scripts\python.exe -m pytest -q
-pwsh -NoProfile -File tools/build_release.ps1
 ```
 
-安装器构建还需要 Inno Setup 7.1.0。详细环境、参数和现有限制见 [构建说明](docs/BUILDING.md)。测试通过临时目录隔离用户资料。
+生成 Windows 安装包需要 PowerShell 7 和 Inno Setup 7.1.0。完整命令、构建参数和校验步骤见 [构建说明](docs/BUILDING.md)。
 
 ## 目录
 
@@ -77,6 +77,6 @@ pwsh -NoProfile -File tools/build_release.ps1
 | `packaging/` | PyInstaller 和 Inno Setup 配置 |
 | `tools/` | 构建、验证和迁移工具 |
 | `THIRD_PARTY_LICENSES/` | 构建环境收集的第三方许可材料 |
-| `docs/OPEN_SOURCE.md` | 许可选择、发布范围与二进制发布待办 |
+| `docs/OPEN_SOURCE.md` | 许可选择、公开预发布范围与对应源码说明 |
 
-问题反馈请使用仓库 Issues。提交日志前请移除个人路径、学习内容和服务凭据。
+欢迎通过 [Issues](https://github.com/78979660-bit/LearningModel/issues) 反馈问题或提出建议。描述问题时，请附上应用版本、Windows 版本和复现步骤；提交日志前请移除个人路径、学习内容和服务凭据。

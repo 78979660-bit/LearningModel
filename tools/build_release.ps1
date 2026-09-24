@@ -123,8 +123,9 @@ function Invoke-CodeSigning {
 if ($PublicRelease) {
     throw @'
 PUBLIC RELEASE BLOCKED: AGPL-3.0-only has been selected for project source.
-The binary corresponding-source materials and clean Windows validation are
-not yet complete. See docs/OPEN_SOURCE.md.
+Source materials are collected and Windows VM smoke tests have run.
+This workflow currently produces draft prerelease candidates only.
+See docs/OPEN_SOURCE.md and docs/RELEASE_SUPPLEMENT.md.
 Local QA builds may continue without -PublicRelease.
 '@
 }
@@ -436,7 +437,7 @@ $buildRecord = [ordered]@{
     installer_skipped = [bool]$SkipInstaller
     signed = -not [string]::IsNullOrWhiteSpace($SignToolPath)
     public_release = $false
-    public_release_blocker = 'Binary corresponding-source materials and clean Windows validation incomplete'
+    public_release_blocker = 'Draft prerelease; distribute matching source/notice attachments and review docs/RELEASE_ACCEPTANCE.md'
 }
 $recordJson = $buildRecord | ConvertTo-Json -Depth 3
 [IO.File]::WriteAllText(

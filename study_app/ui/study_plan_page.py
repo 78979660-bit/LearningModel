@@ -657,6 +657,10 @@ def study_plan_page(state: DashboardState):
         scroll_position = scroll.verticalScrollBar().value()
         try:
             raw_budget = budget_minutes_input.text().strip()
+            if not raw_budget:
+                raise ValueError("请填写今日可用时间（0–1440 分钟）")
+            if not raw_budget.isdecimal() or len(raw_budget) > 4 or not 0 <= int(raw_budget) <= 1440:
+                raise ValueError("今日可用时间须为 0–1440 的整数分钟")
             budget = validate_day_budget_input(
                 state.today.isoformat(), int(raw_budget) if raw_budget else None
             )
