@@ -62,7 +62,7 @@ def load_planning_evidence(
     if min(max_fragments, max_fragment_bytes, max_total_bytes) <= 0:
         raise ValueError("规划输入上限必须为正整数")
     repository = SubjectCatalogRepository(db_path)
-    with repository._open() as connection:
+    with repository.transaction() as connection:
         rows = connection.execute(
             """
             SELECT evidence_id, physical_page, page_label, printed_page,

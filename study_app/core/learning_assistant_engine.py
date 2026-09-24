@@ -747,13 +747,10 @@ class LearningAssistantEngine:
     def _mark_audit(self, audit_id: int | None, marker_name: str, *args: Any) -> None:
         if not audit_id:
             return
-        try:
-            import study_app.ai.audit as audit_module
+        import study_app.ai.audit as audit_module
 
-            marker = getattr(audit_module, marker_name)
-            marker(_AuditRef(audit_id), *args)
-        except Exception:
-            pass
+        marker = getattr(audit_module, marker_name)
+        marker(_AuditRef(audit_id), *args)
 
     def _execute_record_action(
         self, proposal: ActionProposal, entry: dict[str, Any]

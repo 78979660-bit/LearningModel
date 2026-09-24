@@ -3,7 +3,8 @@ from __future__ import annotations
 import logging
 import threading
 import time
-from dataclasses import replace
+from dataclasses import dataclass, replace
+from functools import lru_cache
 
 from study_app.ai.study_plan_service import (
     current_study_plan_signature,
@@ -17,16 +18,20 @@ from study_app.core.async_tasks import (
     capture_subject_revision,
     revalidate_subject_revision,
 )
-from study_app.core.budgeted_day_plan import BudgetPlanInput, build_budgeted_day_plan
-from study_app.core.day_budget_input import validate_day_budget_input, validate_subject_exam_date
-from study_app.core.plan_candidates import CandidateCollection, build_plan_candidates
+from study_app.core.budgeted_day_plan import BudgetPlanInput, BudgetedDayPlan, build_budgeted_day_plan
+from study_app.core.day_budget_input import StudyDayBudget, validate_day_budget_input, validate_subject_exam_date
+from study_app.core.plan_candidates import CandidateCollection, PlanCandidate, build_plan_candidates
 from study_app.core.practice_prompts import (
     build_mock_exam_generation_prompt,
     build_oj_practice_list,
     build_practice_generation_prompt,
 )
 from study_app.core.practice_spec import is_oj_plan_homework
-from study_app.core.study_plan_feedback import plan_day_feedback_details, planned_homework_score
+from study_app.core.study_plan_feedback import (
+    PlannedHomeworkScoreResult,
+    plan_day_feedback_details,
+    planned_homework_score_result,
+)
 from study_app.core.study_plan_items import (
     build_study_plan_items,
     humanize_plan_text,
@@ -36,6 +41,7 @@ from study_app.core.study_plan_items import (
 )
 from study_app.core.task_estimates import (
     CONFIRMED_TEMPLATE_ESTIMATE,
+    TaskEstimate,
     USER_ESTIMATE,
     make_assistant_task_estimate,
     make_task_estimate,
@@ -139,9 +145,650 @@ def local_practice_success_message(result) -> str:
     )
 
 
-def study_plan_page(state: DashboardState):
-    from PySide6.QtCore import QObject, Qt, QTimer, Signal, Slot
-    from PySide6.QtWidgets import QApplication, QCheckBox, QComboBox, QDialog, QGridLayout, QHBoxLayout, QLabel, QLineEdit, QMessageBox, QPushButton, QProgressBar, QScrollArea, QSizePolicy, QSpinBox, QVBoxLayout, QWidget
+@dataclass(frozen=True)
+class _BudgetPlanDraft:
+    budget: StudyDayBudget
+    exam_dates: dict[str, str | None]
+    estimates: dict[str, TaskEstimate]
+    new_estimates: dict[str, TaskEstimate]
+    plan: BudgetedDayPlan
+
+
+@dataclass
+class _HomeworkResultDraft:
+    subject: str
+    result_text: str
+    item_id: int | None
+    feedback_key: str
+    feedback_snapshot: dict
+    score_result: PlannedHomeworkScoreResult
+    record: dict
+
+    @property
+    def fallback_hint(self) -> str:
+        reason = self.score_result.fallback_reason
+        return f"\n\n评分已回退到内置规则：{reason}。" if reason else ""
+
+
+def _prepare_homework_result(
+    line: str,
+    is_correct: bool,
+    item_id: int | None,
+    state: DashboardState,
+    subject_scope: str | None,
+) -> _HomeworkResultDraft:
+    """Capture the pre-result evidence and construct a learning record."""
+    from datetime import date
+    import re
+
+    subject, topic = infer_subject_topic_from_plan_line(line, subject_scope)
+    subject_before = next((item for item in state.subjects if item.name == subject), None)
+    feedback_key = f"study_plan_item_feedback:{item_id}" if item_id is not None else ""
+    feedback_snapshot = get_setting(feedback_key, {}) if feedback_key else {}
+    if subject_before and not feedback_snapshot.get("before_captured"):
+        feedback_snapshot.update(
+            {
+                "before_captured": True,
+                "window_score_before": subject_before.window_score,
+                "covered_mastery_before": subject_before.covered_mastery_score,
+                "total_mastery_before": subject_before.mastery_score,
+            }
+        )
+        set_setting(feedback_key, feedback_snapshot)
+    difficulty_match = re.search(r"参考难度\s*(\d+(?:\.\d+)?)\s*/\s*100", line)
+    difficulty_score = float(difficulty_match.group(1)) if difficulty_match else None
+    score_result = planned_homework_score_result(difficulty_score, is_correct)
+    result_text = "完成正确" if is_correct else "完成有误"
+    record = {
+        "date": date.today().isoformat(),
+        "subject": subject,
+        "module": None,
+        "topic": topic,
+        "activity": "review_exercise",
+        "source": "outside_class",
+        "score": score_result.score,
+        "note": f"学习计划项{result_text}：{line}",
+        "problems": [
+            {
+                "title": f"学习计划作业：{topic}",
+                "statement": line,
+                "answer_result": "全对" if is_correct else "错误",
+                "status": "correct" if is_correct else "wrong",
+                "correctness": 100 if is_correct else 0,
+                "partial_credit": 1.0 if is_correct else 0.0,
+                "error_cause": "" if is_correct else "学习计划作业完成有误，需要复盘错因",
+                "related_topics": [topic],
+                "difficulty_score": difficulty_score,
+                "difficulty_source": "planned_reference" if difficulty_score is not None else "planned_homework",
+            }
+        ],
+    }
+    return _HomeworkResultDraft(
+        subject, result_text, item_id, feedback_key, feedback_snapshot, score_result, record
+    )
+
+
+def _commit_homework_result(draft: _HomeworkResultDraft, is_correct: bool) -> None:
+    add_learning_record(
+        draft.record,
+        study_plan_item_id=draft.item_id,
+        study_plan_result="correct" if is_correct else "wrong",
+    )
+
+
+def _refresh_homework_feedback(draft: _HomeworkResultDraft) -> DashboardState:
+    """Store the scoring provenance, then capture evidence after the record write."""
+    if draft.feedback_key:
+        draft.feedback_snapshot.update(
+            {
+                "result_score": draft.score_result.score,
+                "score_source": draft.score_result.source,
+                "score_fallback_reason": draft.score_result.fallback_reason,
+            }
+        )
+        set_setting(draft.feedback_key, draft.feedback_snapshot)
+    delete_settings_by_prefix("daily_summary_cache:")
+    state = load_dashboard_state()
+    subject_after = next((item for item in state.subjects if item.name == draft.subject), None)
+    if draft.feedback_key and subject_after:
+        draft.feedback_snapshot.update(
+            {
+                "window_score_after": subject_after.window_score,
+                "covered_mastery_after": subject_after.covered_mastery_score,
+                "total_mastery_after": subject_after.mastery_score,
+            }
+        )
+        set_setting(draft.feedback_key, draft.feedback_snapshot)
+    return state
+
+
+def _prepare_budget_plan(
+    state: DashboardState,
+    subject_scope: str | None,
+    raw_budget: str,
+    exam_date_values: dict[str, str],
+    estimate_minutes: dict[str, int],
+    candidate_collection: CandidateCollection,
+    candidate_by_id: dict[str, PlanCandidate],
+    loaded_estimates: dict[str, TaskEstimate],
+) -> _BudgetPlanDraft:
+    """Validate a budget edit and build a draft before the page saves anything."""
+    raw_budget = raw_budget.strip()
+    if not raw_budget:
+        raise ValueError("请填写今日可用时间（0–1440 分钟）")
+    if not raw_budget.isdecimal() or len(raw_budget) > 4 or not 0 <= int(raw_budget) <= 1440:
+        raise ValueError("今日可用时间须为 0–1440 的整数分钟")
+    budget = validate_day_budget_input(state.today.isoformat(), int(raw_budget))
+    exam_dates = {
+        subject_name: validate_subject_exam_date(value.strip())
+        for subject_name, value in exam_date_values.items()
+    }
+    estimates = dict(loaded_estimates)
+    new_estimates = {}
+    for task_id, minutes in estimate_minutes.items():
+        if minutes > 0:
+            existing = loaded_estimates.get(task_id)
+            estimate = (
+                existing
+                if existing is not None and existing.estimated_minutes == minutes
+                else make_task_estimate(candidate_by_id[task_id], minutes, USER_ESTIMATE)
+            )
+            estimates[task_id] = estimate
+            if estimate is not existing:
+                new_estimates[task_id] = estimate
+
+    prior = get_budgeted_day_plan(state.today.isoformat())
+    prior_done = {row["task_id"]: row for row in (prior or {}).get("items", []) if row["checked"]}
+    if set(prior_done) - set(candidate_by_id):
+        raise ValueError("已有完成任务不在当前推荐中。请保留当前计划，刷新数据核对后再调整。")
+    enriched = tuple(
+        replace(
+            candidate,
+            estimated_minutes=estimates[candidate.task_id].estimated_minutes,
+            estimate_source=estimates[candidate.task_id].source,
+            completion_state="checked" if candidate.task_id in prior_done else candidate.completion_state,
+        )
+        if candidate.task_id in estimates else candidate
+        for candidate in candidate_collection.candidates
+    )
+    plan = build_budgeted_day_plan(
+        BudgetPlanInput(
+            budget.plan_date,
+            budget.available_minutes,
+            activity_subject_names(state),
+            subject_scope,
+            exam_dates,
+            budget.plan_date,
+        ),
+        CandidateCollection(enriched, candidate_collection.unmapped),
+    )
+    return _BudgetPlanDraft(budget, exam_dates, estimates, new_estimates, plan)
+
+
+def _preview_budget_plan(draft: _BudgetPlanDraft) -> dict:
+    plan = draft.plan
+    rows = []
+    for section, decisions in (
+        ("selected", plan.selected),
+        ("completed", plan.completed),
+        ("excluded", plan.excluded),
+    ):
+        for decision in decisions:
+            rows.append(
+                {
+                    "id": -(len(rows) + 1),
+                    "item_text": decision.title,
+                    "estimated_minutes": decision.estimated_minutes,
+                    "checked": section == "completed",
+                    "excluded_reason": decision.rule_code if section == "excluded" else None,
+                    "selection_reason": {
+                        "reason": decision.reason,
+                        "ranking_evidence": dict(decision.ranking_evidence),
+                    },
+                }
+            )
+    return {
+        "summary": {
+            "planned_minutes": plan.planned_minutes,
+            "remaining_minutes": plan.remaining_minutes,
+            "over_budget_completed_minutes": plan.over_budget_completed_minutes,
+            "completed_occupancy_unknown": plan.completed_occupancy_unknown,
+        },
+        "items": rows,
+    }
+
+
+def _save_budget_plan(
+    draft: _BudgetPlanDraft,
+    state: DashboardState,
+    candidate_by_id: dict[str, PlanCandidate],
+) -> None:
+    """Persist a confirmed budget draft and its supporting inputs."""
+    budget = draft.budget
+    save_study_day_budget(budget.plan_date, budget.available_minutes)
+    for subject_name, exam_date in draft.exam_dates.items():
+        save_subject_exam_date(state, subject_name, exam_date)
+    for task_id, estimate in draft.new_estimates.items():
+        save_task_estimate(
+            state, candidate_by_id[task_id], estimate.estimated_minutes, estimate.source
+        )
+    create_budgeted_day_plan(budget.plan_date, budget.available_minutes, draft.plan)
+
+
+def _reusable_active_plan(
+    state: DashboardState, subject_name: str | None, force_regenerate: bool
+) -> dict | None:
+    active_plan = get_active_study_plan(subject_name)
+    if active_plan and not (
+        force_regenerate
+        or should_refresh_plan_for_model(active_plan, state, subject_name)
+        or should_upgrade_plan_to_llm(active_plan)
+    ):
+        return active_plan
+    return None
+
+
+def _save_generated_plan(
+    plan: dict,
+    subject_name: str | None,
+    generation_date,
+    input_signature: str,
+    revision_token,
+) -> None:
+    revalidate_subject_revision(revision_token)
+    create_study_plan(
+        subject_name,
+        generation_date.isoformat(),
+        generation_date.isoformat(),
+        input_signature,
+        plan,
+        build_study_plan_items(plan),
+    )
+    delete_settings_by_prefix("daily_summary_cache:")
+
+
+def _apply_final_review_modes(initial_states: dict[str, bool], selected_states: dict[str, bool]) -> list[str]:
+    from study_app.core.study_phase import set_subject_phase
+
+    changed = []
+    for subject_name, enabled in selected_states.items():
+        if enabled == initial_states[subject_name]:
+            continue
+        set_subject_phase(subject_name, "final_review" if enabled else "regular")
+        archive_active_study_plan(subject_name)
+        changed.append(subject_name)
+    if changed:
+        archive_active_study_plan(None)
+        delete_settings_by_prefix("daily_summary_cache:")
+    return changed
+
+
+@dataclass(frozen=True)
+class _CompletedDayFeedback:
+    messages: tuple[str, ...]
+    shown_key: str
+    previous_markers: frozenset[str]
+    current_markers: frozenset[str]
+
+
+def _completed_day_feedback(
+    saved_plan: dict, state: DashboardState, subject_scope: str | None
+) -> _CompletedDayFeedback:
+    shown_key = "study_plan_day_feedback_shown"
+    shown = set(get_setting(shown_key, []) or [])
+    new_shown = set(shown)
+    messages = []
+    for feedback in plan_day_feedback_details(saved_plan, state, subject_scope):
+        marker = f"{saved_plan['id']}:{feedback['day_index']}"
+        if not feedback["complete"] or marker in shown:
+            continue
+        messages.append(feedback["popup"])
+        new_shown.add(marker)
+    return _CompletedDayFeedback(
+        tuple(messages), shown_key, frozenset(shown), frozenset(new_shown)
+    )
+
+
+def _save_completed_day_feedback_markers(feedback: _CompletedDayFeedback) -> None:
+    if feedback.current_markers != feedback.previous_markers:
+        set_setting(feedback.shown_key, sorted(feedback.current_markers))
+
+
+def _set_plan_item_checked(item_id: int, checked: bool) -> None:
+    update_study_plan_item_state(item_id, checked=checked)
+
+
+def _start_plan_generation_state() -> DashboardState:
+    delete_settings_by_prefix("daily_summary_cache:")
+    return load_dashboard_state()
+
+
+def _archive_current_plan(subject_scope: str | None) -> None:
+    archive_active_study_plan(subject_scope)
+    delete_settings_by_prefix("daily_summary_cache:")
+
+
+class _PlanGenerationSession:
+    """Own one page's worker, watchdog, and stale-result token."""
+
+    def __init__(self, page, worker, relay_type, on_completed, on_failed, on_timeout):
+        from PySide6.QtCore import QTimer
+
+        self.page = page
+        self.worker = worker
+        self.token = object()
+        self.on_completed = on_completed
+        self.on_failed = on_failed
+        self.on_timeout = on_timeout
+        page._plan_generation_token = self.token
+        page._plan_worker = worker
+        page.destroyed.connect(self._page_destroyed)
+
+        self.watchdog = QTimer(page)
+        self.watchdog.setSingleShot(True)
+        self.watchdog.timeout.connect(self._timeout)
+        page._plan_worker_watchdog = self.watchdog
+        self.relay = relay_type(
+            on_completed=self._completed,
+            on_failed=self._failed,
+            on_finished=self._finished,
+            parent=page,
+        )
+        worker.completed.connect(self.relay.completed)
+        worker.failed.connect(self.relay.failed)
+        worker.finished.connect(self.relay.finished)
+
+    def _is_current(self):
+        return getattr(self.page, "_plan_generation_token", None) is self.token
+
+    def _clear(self):
+        if not self._is_current():
+            return
+        self.page._plan_worker = None
+        self.page._plan_generation_token = None
+        self.page._plan_worker_watchdog = None
+        self.watchdog.stop()
+        self.watchdog.deleteLater()
+
+    def _page_destroyed(self):
+        self.page._plan_worker = None
+        self.page._plan_generation_token = None
+        self.page._plan_worker_watchdog = None
+
+    def _completed(self, plan, source):
+        if self._is_current():
+            self._clear()
+            self.on_completed(plan, source)
+
+    def _failed(self, error):
+        if self._is_current():
+            self._clear()
+            self.on_failed(error)
+
+    def _timeout(self):
+        if self._is_current():
+            self.worker.requestInterruption()
+            self._clear()
+            self.on_timeout()
+
+    def _finished(self):
+        self._clear()
+
+    def start(self):
+        self.watchdog.start(90000)
+        try:
+            self.worker.start()
+        except Exception as error:
+            self._clear()
+            self.relay.deleteLater()
+            self.on_failed(str(error))
+            return False
+        return True
+
+
+class _ChatGPTPDFSession:
+    """Own the PDF worker UI state and ignore callbacks from stale attempts."""
+
+    def __init__(self, page, progress_label, stop_button, relay_type, thread_type):
+        self.page = page
+        self.progress_label = progress_label
+        self.stop_button = stop_button
+        self.relay_type = relay_type
+        self.thread_type = thread_type
+
+    def set_busy(self, busy: bool):
+        self.stop_button.setVisible(busy)
+        self.stop_button.setDisabled(not busy)
+
+    def _watch_global_worker(self, worker):
+        def release_busy():
+            if getattr(self.page, "_chatgpt_bridge_page_alive", False):
+                self.set_busy(False)
+
+        relay = self.relay_type(on_finished=release_busy, parent=self.page)
+        worker.finished.connect(relay.finished)
+        if worker.isFinished():
+            relay.finished()
+
+    def stop(self):
+        from PySide6.QtWidgets import QMessageBox
+
+        with _CHATGPT_BRIDGE_LOCK:
+            workers = list(_CHATGPT_BRIDGE_WORKERS)
+        for worker in workers:
+            if worker.isRunning():
+                try:
+                    result = worker.cancel()
+                except Exception:
+                    QMessageBox.warning(
+                        self.page,
+                        "停止 PDF 生成失败",
+                        "未能停止当前 PDF 生成任务，请稍后重试。",
+                    )
+                    return
+                if not result.success:
+                    QMessageBox.warning(
+                        self.page,
+                        "停止 PDF 生成失败",
+                        "未能停止当前 PDF 生成任务，请稍后重试。",
+                    )
+                    return
+        for worker in workers:
+            worker.cancelled = True
+        self.set_busy(False)
+        self.progress_label.setText("已手动停止 ChatGPT PDF 生成，并清理临时提示词。")
+        QMessageBox.information(self.page, "已停止", "已停止当前 ChatGPT PDF 生成流程。")
+
+    def _detach(self, worker, token):
+        workers = getattr(self.page, "_chatgpt_bridge_threads", [])
+        if worker in workers:
+            workers.remove(worker)
+        if not getattr(self.page, "_chatgpt_bridge_page_alive", False):
+            return False
+        is_current = getattr(self.page, "_chatgpt_pdf_active_token", None) is token
+        if is_current and not any(item.isRunning() for item in workers):
+            self.set_busy(False)
+        return is_current
+
+    def _completed(self, result, original_prompt, worker, token):
+        from PySide6.QtWidgets import QApplication, QMessageBox
+
+        if not self._detach(worker, token):
+            return
+        if worker.cancelled:
+            self.progress_label.setText("ChatGPT PDF 生成已手动停止。")
+            return
+        if result.success:
+            if result.code != "pdf_opened":
+                self.progress_label.setText("PDF 已下载，但未能自动打开。")
+                QMessageBox.warning(
+                    self.page,
+                    "PDF 已下载但未打开",
+                    f"PDF 已安全下载，但系统未能自动打开文件。\n\n文件位置：\n{result.pdf_path}",
+                )
+                return
+            self.progress_label.setText("ChatGPT 已生成 PDF，并已自动打开。")
+            QMessageBox.information(
+                self.page,
+                "PDF 已生成",
+                f"ChatGPT 已完成生成，PDF 已归档并自动打开。\n\n临时文件位置：\n{result.pdf_path}",
+            )
+            return
+        QApplication.clipboard().setText(original_prompt)
+        self.progress_label.setText("ChatGPT 自动生成 PDF 失败，提示词已复制。")
+        QMessageBox.warning(
+            self.page,
+            "ChatGPT 自动生成失败",
+            "ChatGPT 未能完成 PDF 生成。为避免丢失，出题提示词已复制到剪贴板。",
+        )
+
+    def _failed(self, _error, worker, token):
+        from PySide6.QtWidgets import QMessageBox
+
+        if not self._detach(worker, token):
+            return
+        if worker.cancelled:
+            self.progress_label.setText("ChatGPT PDF 生成已手动停止。")
+            return
+        self.progress_label.setText("ChatGPT 自动生成 PDF 失败，请检查桌面端状态后重试。")
+        QMessageBox.warning(
+            self.page,
+            "ChatGPT 自动生成失败",
+            "ChatGPT 桌面桥接发生错误，请检查桌面端状态后重试。",
+        )
+
+    def _show_existing_worker(self, worker):
+        from PySide6.QtWidgets import QMessageBox
+
+        self.set_busy(True)
+        if worker is not None:
+            self._watch_global_worker(worker)
+        QMessageBox.information(
+            self.page,
+            "正在生成 PDF",
+            "已有一个 ChatGPT PDF 生成任务正在运行。你可以点击“停止 PDF 生成”后再启动新的任务。",
+        )
+
+    def start(self, prompt: str):
+        from PySide6.QtWidgets import QMessageBox
+
+        with _CHATGPT_BRIDGE_LOCK:
+            active_threads = list(_CHATGPT_BRIDGE_WORKERS)
+        if active_threads:
+            self._show_existing_worker(active_threads[0])
+            return
+        task_token = object()
+        self.page._chatgpt_pdf_active_token = task_token
+        self.set_busy(True)
+        self.progress_label.setText("正在让 ChatGPT 生成 PDF；生成期间可以继续使用学习应用...")
+        thread = self.thread_type(prompt, self.page)
+        thread.task_token = task_token
+        bridge_threads = getattr(self.page, "_chatgpt_bridge_threads", [])
+        bridge_threads.append(thread)
+        self.page._chatgpt_bridge_threads = bridge_threads
+        relay = self.relay_type(
+            on_completed=lambda result, original_prompt: self._completed(
+                result, original_prompt, thread, task_token
+            ),
+            on_failed=lambda error: self._failed(error, thread, task_token),
+            parent=self.page,
+        )
+        thread.completed.connect(relay.completed)
+        thread.failed.connect(relay.failed)
+        thread.finished.connect(relay.finished)
+        try:
+            started = thread.start()
+        except Exception:
+            bridge_threads.remove(thread)
+            relay.deleteLater()
+            self.set_busy(False)
+            QMessageBox.warning(
+                self.page,
+                "启动 PDF 生成失败",
+                "未能启动 PDF 生成任务，请稍后重试。",
+            )
+            return
+        if not started:
+            bridge_threads.remove(thread)
+            relay.deleteLater()
+            with _CHATGPT_BRIDGE_LOCK:
+                active_threads = list(_CHATGPT_BRIDGE_WORKERS)
+            self._show_existing_worker(active_threads[0] if active_threads else None)
+
+
+def _budget_plan_row(row: dict, *, preview: bool, on_check):
+    """Build one budgeted task row and its optional evidence disclosure."""
+    from PySide6.QtWidgets import QCheckBox, QLabel, QVBoxLayout, QWidget
+
+    completed = bool(row["checked"])
+    excluded = bool(row["excluded_reason"])
+    status = "已完成" if completed else "未安排" if excluded else "待执行"
+    minutes = f" · {row['estimated_minutes']} 分钟" if row["estimated_minutes"] else ""
+    reason = row["selection_reason"].get("reason") or row["excluded_reason"] or ""
+    if excluded:
+        label = QLabel(f"{status} · {row['item_text']}{minutes} · {reason}")
+        label.setObjectName("BudgetExcludedItem")
+        label.setWordWrap(True)
+        return label, None
+
+    from study_app.ui.design_components import disclosure
+
+    task = QWidget()
+    task_layout = QVBoxLayout(task)
+    task_layout.setContentsMargins(0, 8, 0, 8)
+    task_heading = QLabel(f"{status} · {row['item_text']}{minutes}")
+    task_heading.setWordWrap(True)
+    task_heading.setObjectName("ListTitle")
+    task_layout.addWidget(task_heading)
+    detail = QLabel(reason)
+    detail.setWordWrap(True)
+    detail.setObjectName("Muted")
+    evidence = (row.get("selection_reason") or {}).get("ranking_evidence") or {}
+    evidence_labels = {
+        "priority": "模型排序分值",
+        "forgetting_risk": "遗忘风险权重",
+        "mastery_gap": "掌握缺口权重",
+        "coverage_value": "覆盖权重",
+        "exam_date": "考试日期",
+        "estimate_source": "估时来源",
+    }
+
+    def evidence_value(key, value):
+        if key == "estimate_source":
+            return {
+                "confirmed_template": "规则估时",
+                "user": "手动估时",
+                "user_estimate": "手动估时",
+            }.get(value, value)
+        return f"{value:.3f}" if isinstance(value, float) else str(value)
+
+    extra = [
+        f"{label}：{evidence_value(key, evidence[key])}"
+        for key, label in evidence_labels.items()
+        if evidence.get(key) is not None
+    ]
+    detail.setText(reason + ("\n" + "；".join(extra) if extra else ""))
+    details = disclosure("查看依据", detail)
+    task_layout.addWidget(details)
+    checkbox = QCheckBox("已完成" if completed else "标记完成")
+    checkbox.setAccessibleName(f"完成任务：{row['item_text']}")
+    checkbox.setObjectName("BudgetPlanItem")
+    checkbox.setProperty("itemId", row["id"])
+    checkbox.setChecked(completed)
+    checkbox.setEnabled(not preview)
+    if preview:
+        checkbox.setToolTip("确认安排后可记录完成状态")
+    checkbox.stateChanged.connect(
+        lambda value, item_id=row["id"]: on_check(item_id, bool(value))
+    )
+    task_layout.addWidget(checkbox)
+    return task, details
+
+
+@lru_cache(maxsize=1)
+def _worker_types():
+    """Build Qt worker and relay types once, when the first plan page opens."""
+    from PySide6.QtCore import QObject, Signal, Slot
 
     class WorkerSignalRelay(QObject):
         def __init__(
@@ -310,255 +957,249 @@ def study_plan_page(state: DashboardState):
 
             return cancel_chatgpt_pdf_generation()
 
-    scroll = QScrollArea()
-    scroll.setWidgetResizable(True)
-    scroll.setFrameShape(QScrollArea.Shape.NoFrame)
-    scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-    content = QWidget()
-    content.setMinimumWidth(0)
-    content.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
-    content._chatgpt_bridge_page_alive = True
+    return WorkerSignalRelay, PlanGenerationThread, ChatGPTBridgeThread
 
-    def mark_chatgpt_page_destroyed():
-        setattr(content, "_chatgpt_bridge_page_alive", False)
 
-    content.destroyed.connect(mark_chatgpt_page_destroyed)
-    app = QApplication.instance()
-    if app is not None and not getattr(app, "_chatgpt_bridge_shutdown_connected", False):
-        app.aboutToQuit.connect(_shutdown_chatgpt_bridge_workers)
-        app._chatgpt_bridge_shutdown_connected = True
-    layout = QVBoxLayout(content)
-    layout.setContentsMargins(30, 28, 30, 30)
-    layout.setSpacing(18)
+def _edit_final_review_modes(parent, state: DashboardState) -> list[str] | None:
+    from PySide6.QtWidgets import QCheckBox, QDialog, QHBoxLayout, QLabel, QPushButton, QVBoxLayout
+    from study_app.core.study_phase import exam_scope_label, is_final_review
 
-    hero = QWidget()
-    hero.setObjectName("RecordHero")
-    hero_layout = QVBoxLayout(hero)
-    hero_layout.setContentsMargins(18, 16, 18, 16)
-    hero_layout.setSpacing(6)
-    title = QLabel("学习计划")
-    title.setObjectName("HeroTitle")
-    hero_layout.addWidget(title)
-    layout.addWidget(hero)
+    dialog = QDialog(parent)
+    dialog.setWindowTitle("管理期末复习模式")
+    dialog.setMinimumWidth(520)
+    dialog_layout = QVBoxLayout(dialog)
+    dialog_layout.setContentsMargins(24, 22, 24, 22)
+    dialog_layout.setSpacing(14)
 
-    actions = QGridLayout()
-    actions.setHorizontalSpacing(10)
-    actions.setVerticalSpacing(10)
-    for column in range(4):
-        actions.setColumnStretch(column, 1)
-    scope_label = QLabel("计划范围")
-    scope_label.setObjectName("FormLabel")
-    subject_scope = QComboBox()
-    for label, value in plan_subject_scope_options(state):
-        subject_scope.addItem(label, value)
-    generate_button = QPushButton("生成今日计划")
-    generate_button.setObjectName("PrimaryButton")
-    final_review_button = QPushButton("期末复习模式")
-    final_review_button.setObjectName("GhostButton")
-    clear_button = QPushButton("清空计划")
-    clear_button.setObjectName("GhostButton")
-    copy_context_button = QPushButton("复制题库上下文")
-    copy_context_button.setObjectName("GhostButton")
-    mock_exam_mode = QComboBox()
-    mock_exam_mode.addItem("诊断卷", "diagnostic")
-    mock_exam_mode.addItem("标准期末卷", "standard")
-    mock_exam_mode.addItem("冲刺专题卷", "sprint")
-    mock_exam_button = QPushButton("生成模拟卷 PDF")
-    mock_exam_button.setObjectName("GhostButton")
-    stop_pdf_button = QPushButton("停止 PDF 生成")
-    stop_pdf_button.setObjectName("DangerButton")
-    stop_pdf_button.setVisible(False)
-    stop_pdf_button.setDisabled(True)
-    subject_scope.setSizePolicy(
-        QSizePolicy.Policy.Expanding,
-        QSizePolicy.Policy.Fixed,
+    dialog_title = QLabel("选择进入期末复习阶段的学科")
+    dialog_title.setObjectName("SectionTitle")
+    dialog_hint = QLabel(
+        "启用后，该学科仍使用统一的加权优先级排序，但掌握度缺口权重会提高，"
+        "并增加跨章节综合练习比例；无题目证据的知识点按初始掌握度参与排序。"
     )
-    for control in (
-        generate_button,
-        final_review_button,
-        clear_button,
-        copy_context_button,
-        mock_exam_mode,
-        mock_exam_button,
-        stop_pdf_button,
-    ):
-        control.setSizePolicy(
-            QSizePolicy.Policy.Expanding,
-            QSizePolicy.Policy.Fixed,
+    dialog_hint.setObjectName("Muted")
+    dialog_hint.setWordWrap(True)
+    dialog_layout.addWidget(dialog_title)
+    dialog_layout.addWidget(dialog_hint)
+
+    phase_checks = {}
+    initial_states = {}
+    for subject_name in final_review_subject_names(state):
+        checked = is_final_review(subject_name)
+        initial_states[subject_name] = checked
+        scope_label = exam_scope_label(subject_name)
+        checkbox = QCheckBox(
+            f"{subject_name}（考试范围：{scope_label}）"
+            if scope_label
+            else subject_name
         )
-    scope_row = QHBoxLayout()
-    scope_label.setBuddy(subject_scope)
-    scope_row.addWidget(scope_label)
-    scope_row.addWidget(subject_scope, 1)
-    layout.addLayout(scope_row)
-    actions.addWidget(generate_button, 0, 0, 1, 4)
-    actions.addWidget(final_review_button, 1, 0, 1, 2)
-    actions.addWidget(clear_button, 1, 2)
-    actions.addWidget(copy_context_button, 1, 3)
-    actions.addWidget(mock_exam_mode, 2, 0, 1, 2)
-    actions.addWidget(mock_exam_button, 2, 2)
-    actions.addWidget(stop_pdf_button, 2, 3)
-    tools_body = QWidget()
-    tools_layout = QVBoxLayout(tools_body)
-    tools_layout.setContentsMargins(0, 0, 0, 0)
-    tools_layout.addLayout(actions)
+        checkbox.setChecked(checked)
+        phase_checks[subject_name] = checkbox
+        dialog_layout.addWidget(checkbox)
 
-    budget_toggle = QPushButton("考试日期与单项估时 · 展开")
-    budget_toggle.setObjectName("BudgetOptionsToggle")
-    budget_toggle.setCheckable(True)
-    budget_toggle.setChecked(False)
-    budget_toggle.setToolTip("查看考试日期与每项任务估时；修改后需重新预览并确认。")
+    button_row = QHBoxLayout()
+    cancel_button = QPushButton("取消")
+    cancel_button.setObjectName("GhostButton")
+    save_button = QPushButton("保存设置")
+    save_button.setObjectName("PrimaryButton")
+    button_row.addStretch()
+    button_row.addWidget(cancel_button)
+    button_row.addWidget(save_button)
+    dialog_layout.addLayout(button_row)
+
+    cancel_button.clicked.connect(dialog.reject)
+
+    def save_modes():
+        _apply_final_review_modes(
+            initial_states,
+            {name: checkbox.isChecked() for name, checkbox in phase_checks.items()},
+        )
+        dialog.accept()
+
+    save_button.clicked.connect(save_modes)
+    if dialog.exec() != QDialog.DialogCode.Accepted:
+        return
+
+    changed_text = [
+        f"{name}：{'已启用' if phase_checks[name].isChecked() else '已退出'}"
+        for name in phase_checks
+        if phase_checks[name].isChecked() != initial_states[name]
+    ]
+    return changed_text
 
 
-    budget_panel = QWidget()
-    budget_panel.setObjectName("Card")
-    budget_layout = QVBoxLayout(budget_panel)
-    budget_layout.setContentsMargins(18, 16, 18, 16)
-    budget_layout.setSpacing(10)
-    budget_title = QLabel("今天能学多久")
-    budget_title.setObjectName("CardTitle")
-    budget_layout.addWidget(budget_title)
+class _BudgetPlanPanel:
+    """今日预算、估时输入以及预览确认流程。"""
 
-    budget_row = QHBoxLayout()
-    minutes_label = QLabel("今日可用时间（分钟）")
-    budget_row.addWidget(minutes_label)
-    budget_minutes_input = QLineEdit()
-    budget_minutes_input.setObjectName("BudgetMinutesInput")
-    budget_minutes_input.setPlaceholderText("0～1440")
-    minutes_label.setBuddy(budget_minutes_input)
-    budget_minutes_input.setAccessibleName("今日可用时间（分钟）")
-    budget_row.addWidget(budget_minutes_input)
-    budget_row.addStretch()
-    budget_layout.addLayout(budget_row)
+    def __init__(self, page):
+        from PySide6.QtWidgets import QHBoxLayout, QLabel, QLineEdit, QPushButton, QSpinBox, QVBoxLayout, QWidget
+        self.page = page
+        self.budget_toggle = QPushButton("考试日期与单项估时 · 展开")
+        self.budget_toggle.setObjectName("BudgetOptionsToggle")
+        self.budget_toggle.setCheckable(True)
+        self.budget_toggle.setChecked(False)
+        self.budget_toggle.setToolTip("查看考试日期与每项任务估时；修改后需重新预览并确认。")
+        self.widget = QWidget()
+        self.widget.setObjectName("Card")
+        budget_layout = QVBoxLayout(self.widget)
+        budget_layout.setContentsMargins(18, 16, 18, 16)
+        budget_layout.setSpacing(10)
+        budget_title = QLabel("今天能学多久")
+        budget_title.setObjectName("CardTitle")
+        budget_layout.addWidget(budget_title)
+        budget_row = QHBoxLayout()
+        minutes_label = QLabel("今日可用时间（分钟）")
+        budget_row.addWidget(minutes_label)
+        self.budget_minutes_input = QLineEdit()
+        self.budget_minutes_input.setObjectName("BudgetMinutesInput")
+        self.budget_minutes_input.setPlaceholderText("0～1440")
+        minutes_label.setBuddy(self.budget_minutes_input)
+        self.budget_minutes_input.setAccessibleName("今日可用时间（分钟）")
+        budget_row.addWidget(self.budget_minutes_input)
+        budget_row.addStretch()
+        budget_layout.addLayout(budget_row)
+        self.load_label = QLabel("可用时间未设置；请输入 0–1440 分钟。")
+        self.load_label.setObjectName("PlanLoadPreview")
+        self.load_label.setWordWrap(True)
+        budget_layout.addWidget(self.load_label)
+        budget_layout.addWidget(self.budget_toggle)
+        self.options_panel = QWidget()
+        options_layout = QVBoxLayout(self.options_panel)
+        options_layout.setContentsMargins(0, 0, 0, 0)
+        self.options_panel.hide()
+        budget_layout.addWidget(self.options_panel)
+        self.exam_inputs: dict[str, QLineEdit] = {}
+        for subject_name in activity_subject_names(self.page.state):
+            row = QHBoxLayout()
+            row.addWidget(QLabel(f"{subject_name}考试日期"))
+            field = QLineEdit()
+            field.setObjectName("SubjectExamDateInput")
+            field.setProperty("subjectId", subject_name)
+            field.setPlaceholderText("可空；YYYY-MM-DD")
+            row.addWidget(field)
+            row.addStretch()
+            options_layout.addLayout(row)
+            self.exam_inputs[subject_name] = field
+        self.candidate_collection = build_plan_candidates(self.page.state)
+        self.estimate_inputs: dict[str, QSpinBox] = {}
+        self.candidate_by_id = {candidate.task_id: candidate for candidate in self.candidate_collection.candidates}
+        for candidate in self.candidate_collection.candidates:
+            row = QHBoxLayout()
+            task_label = QLabel(f"{candidate.subject_id} · {candidate.title}")
+            task_label.setWordWrap(True)
+            row.addWidget(task_label, 1)
+            field = QSpinBox()
+            field.setObjectName("TaskEstimateInput")
+            field.setProperty("taskId", candidate.task_id)
+            field.setRange(1, 1440)
+            field.setSuffix(" 分钟 · 助理估时")
+            row.addWidget(field)
+            row.addStretch()
+            options_layout.addLayout(row)
+            self.estimate_inputs[candidate.task_id] = field
+        self.budget_apply_button = QPushButton("预览今日安排")
+        self.budget_apply_button.setObjectName("PrimaryButton")
+        class BudgetStatusLabel(QLabel):
+            def setText(self, text):
+                super().setText(text)
+                self.setVisible(bool(text))
+        self.budget_status = BudgetStatusLabel()
+        self.budget_status.setObjectName("StatusLabel")
+        self.budget_status.setWordWrap(True)
+        budget_actions = QHBoxLayout()
+        budget_actions.addWidget(self.budget_apply_button)
+        self.confirm_budget_button = QPushButton("确认安排")
+        self.confirm_budget_button.setObjectName("ConfirmBudgetPlan")
+        self.confirm_budget_button.setEnabled(False)
+        self.confirm_budget_button.setToolTip("先预览安排，再确认保存")
+        budget_actions.addWidget(self.confirm_budget_button)
+        budget_actions.addStretch()
+        budget_layout.addLayout(budget_actions)
+        self.preview_signature = None
+        self.task_rows = {}
+        budget_layout.addWidget(self.budget_status)
+        budget_result_host = QWidget()
+        self.budget_result_layout = QVBoxLayout(budget_result_host)
+        self.budget_result_layout.setContentsMargins(0, 0, 0, 0)
+        self.budget_result_layout.setSpacing(8)
+        budget_layout.addWidget(budget_result_host)
+        self.widget.setVisible(True)
+        self.page.content._budget_options_panel = self.options_panel
+        self.page.content._budget_options_toggle = self.budget_toggle
+        self.budget_toggle.toggled.connect(self.toggle_budget_panel)
+        self._load_saved_inputs()
+        self._connect_inputs()
 
-    load_label = QLabel("可用时间未设置；请输入 0–1440 分钟。")
-    load_label.setObjectName("PlanLoadPreview")
-    load_label.setWordWrap(True)
-    budget_layout.addWidget(load_label)
-    budget_layout.addWidget(budget_toggle)
-    options_panel = QWidget()
-    options_layout = QVBoxLayout(options_panel)
-    options_layout.setContentsMargins(0, 0, 0, 0)
-    options_panel.hide()
-    budget_layout.addWidget(options_panel)
-    exam_inputs: dict[str, QLineEdit] = {}
-    for subject_name in activity_subject_names(state):
-        row = QHBoxLayout()
-        row.addWidget(QLabel(f"{subject_name}考试日期"))
-        field = QLineEdit()
-        field.setObjectName("SubjectExamDateInput")
-        field.setProperty("subjectId", subject_name)
-        field.setPlaceholderText("可空；YYYY-MM-DD")
-        row.addWidget(field)
-        row.addStretch()
-        options_layout.addLayout(row)
-        exam_inputs[subject_name] = field
+    def _load_saved_inputs(self):
+        self.budget_schema_ready = True
+        self.loaded_estimates = {}
+        try:
+            saved_budget = get_study_day_budget(self.page.state.today.isoformat())
+            if saved_budget is not None:
+                self.budget_minutes_input.setText(str(saved_budget.available_minutes))
+            for subject_name, field in self.exam_inputs.items():
+                saved_date = get_subject_exam_date(subject_name)
+                field.setText(saved_date or "")
+            for task_id, candidate in self.candidate_by_id.items():
+                estimate = get_task_estimate(candidate)
+                if estimate is None:
+                    estimate = make_assistant_task_estimate(candidate)
+                self.loaded_estimates[task_id] = estimate
+                field = self.estimate_inputs[task_id]
+                field.setValue(estimate.estimated_minutes)
+                if estimate.source == USER_ESTIMATE:
+                    field.setSuffix(" 分钟 · 已保存")
+                elif estimate.source == CONFIRMED_TEMPLATE_ESTIMATE:
+                    field.setSuffix(" 分钟 · 助理估时")
+            get_budgeted_day_plan(self.page.state.today.isoformat())
+        except DatabaseNotInitializedError:
+            self.budget_schema_ready = False
+            self.budget_status.setText("时间预算暂不可用。请在设置中检查数据结构，已有学习记录会保留。")
+            self.budget_apply_button.setDisabled(True)
 
-    candidate_collection = build_plan_candidates(state)
-    estimate_inputs: dict[str, QSpinBox] = {}
-    candidate_by_id = {candidate.task_id: candidate for candidate in candidate_collection.candidates}
-    for candidate in candidate_collection.candidates:
-        row = QHBoxLayout()
-        task_label = QLabel(f"{candidate.subject_id} · {candidate.title}")
-        task_label.setWordWrap(True)
-        row.addWidget(task_label, 1)
-        field = QSpinBox()
-        field.setObjectName("TaskEstimateInput")
-        field.setProperty("taskId", candidate.task_id)
-        field.setRange(1, 1440)
-        field.setSuffix(" 分钟 · 助理估时")
-        row.addWidget(field)
-        row.addStretch()
-        options_layout.addLayout(row)
-        estimate_inputs[candidate.task_id] = field
+    def _connect_inputs(self):
+        for task_id, field in self.estimate_inputs.items():
+            field.valueChanged.connect(
+                lambda value, current_task_id=task_id: self.mark_manual_estimate(current_task_id, value)
+            )
+        self.budget_apply_button.clicked.connect(lambda _checked=False: self.generate_budgeted_plan(preview_only=True))
+        self.confirm_budget_button.clicked.connect(lambda _checked=False: self.generate_budgeted_plan(require_preview=True))
+        for field in [self.budget_minutes_input, *self.exam_inputs.values()]:
+            field.textChanged.connect(self.invalidate_preview)
+        for field in self.estimate_inputs.values():
+            field.valueChanged.connect(self.invalidate_preview)
+        self.invalidate_preview()
+        if self.budget_schema_ready:
+            self.budget_status.setText("")
 
-    budget_apply_button = QPushButton("预览今日安排")
-    budget_apply_button.setObjectName("PrimaryButton")
-    class BudgetStatusLabel(QLabel):
-        def setText(self, text):
-            super().setText(text)
-            self.setVisible(bool(text))
-
-    budget_status = BudgetStatusLabel()
-    budget_status.setObjectName("StatusLabel")
-    budget_status.setWordWrap(True)
-    budget_actions = QHBoxLayout()
-    budget_actions.addWidget(budget_apply_button)
-    confirm_budget_button = QPushButton("确认安排")
-    confirm_budget_button.setObjectName("ConfirmBudgetPlan")
-    confirm_budget_button.setEnabled(False)
-    confirm_budget_button.setToolTip("先预览安排，再确认保存")
-    budget_actions.addWidget(confirm_budget_button)
-    budget_actions.addStretch()
-    budget_layout.addLayout(budget_actions)
-    preview_holder = {"signature": None}
-    task_rows = {}
-    budget_layout.addWidget(budget_status)
-    budget_result_host = QWidget()
-    budget_result_layout = QVBoxLayout(budget_result_host)
-    budget_result_layout.setContentsMargins(0, 0, 0, 0)
-    budget_result_layout.setSpacing(8)
-    budget_layout.addWidget(budget_result_host)
-    budget_panel.setVisible(True)
-    content._budget_options_panel = options_panel
-    content._budget_options_toggle = budget_toggle
-    layout.addWidget(budget_panel)
-
-    def toggle_budget_panel(expanded: bool):
-        options_panel.setVisible(expanded)
-        budget_toggle.setText(
+    def toggle_budget_panel(self, expanded: bool):
+        self.options_panel.setVisible(expanded)
+        self.budget_toggle.setText(
             "考试日期与单项估时 · 收起" if expanded else "考试日期与单项估时 · 展开"
         )
 
-    budget_toggle.toggled.connect(toggle_budget_panel)
-
-    def clear_budget_results():
-        task_rows.clear()
-        while budget_result_layout.count():
-            item = budget_result_layout.takeAt(0)
+    def clear_budget_results(self):
+        self.task_rows.clear()
+        while self.budget_result_layout.count():
+            item = self.budget_result_layout.takeAt(0)
             widget = item.widget()
             if widget is not None:
                 widget.setParent(None)
                 widget.deleteLater()
 
-    budget_schema_ready = True
-    loaded_estimates = {}
-    try:
-        saved_budget = get_study_day_budget(state.today.isoformat())
-        if saved_budget is not None:
-            budget_minutes_input.setText(str(saved_budget.available_minutes))
-        for subject_name, field in exam_inputs.items():
-            saved_date = get_subject_exam_date(subject_name)
-            field.setText(saved_date or "")
-        for task_id, candidate in candidate_by_id.items():
-            estimate = get_task_estimate(candidate)
-            if estimate is None:
-                estimate = make_assistant_task_estimate(candidate)
-            loaded_estimates[task_id] = estimate
-            field = estimate_inputs[task_id]
-            field.setValue(estimate.estimated_minutes)
-            if estimate.source == USER_ESTIMATE:
-                field.setSuffix(" 分钟 · 已保存")
-            elif estimate.source == CONFIRMED_TEMPLATE_ESTIMATE:
-                field.setSuffix(" 分钟 · 助理估时")
-        get_budgeted_day_plan(state.today.isoformat())
-    except DatabaseNotInitializedError:
-        budget_schema_ready = False
-        budget_status.setText("时间预算暂不可用。请在设置中检查数据结构，已有学习记录会保留。")
-        budget_apply_button.setDisabled(True)
-
-    def render_budgeted_plan(saved_plan=None, *, preview=False):
-        clear_budget_results()
-        if not budget_schema_ready:
+    def render_budgeted_plan(self, saved_plan=None, *, preview=False):
+        from PySide6.QtWidgets import QLabel
+        self.clear_budget_results()
+        if not self.budget_schema_ready:
             return
         if saved_plan is None:
             saved_plan = get_budgeted_day_plan(
-                state.today.isoformat(), subject_scope.currentData() or None
+                self.page.state.today.isoformat(), self.page.subject_scope.currentData() or None
             )
         if not saved_plan:
             note = QLabel("暂无今日安排")
             note.setObjectName("Muted")
-            budget_result_layout.addWidget(note)
+            self.budget_result_layout.addWidget(note)
             return
         summary = saved_plan["summary"]
         summary_text = (
@@ -572,176 +1213,92 @@ def study_plan_page(state: DashboardState):
         summary_label = QLabel(summary_text)
         summary_label.setObjectName("BudgetSummaryLabel")
         summary_label.setWordWrap(True)
-        budget_result_layout.addWidget(summary_label)
+        self.budget_result_layout.addWidget(summary_label)
         if not saved_plan["items"]:
             empty = QLabel("当前学科暂无任务")
             empty.setWordWrap(True)
-            budget_result_layout.addWidget(empty)
+            self.budget_result_layout.addWidget(empty)
         active_rows = [r for r in saved_plan["items"] if not r["excluded_reason"]]
         if active_rows and all(r["checked"] for r in active_rows):
-            budget_result_layout.addWidget(QLabel("今日任务已完成"))
+            self.budget_result_layout.addWidget(QLabel("今日任务已完成"))
+
+        def update_budget_check(item_id, checked):
+            _set_plan_item_checked(item_id, checked)
+            self.invalidate_preview()
+            self.render_budgeted_plan()
+            self.budget_status.setText("完成状态已保存")
+
         for row in saved_plan["items"]:
-            completed = bool(row["checked"])
-            excluded = bool(row["excluded_reason"])
-            status = "已完成" if completed else "未安排" if excluded else "待执行"
-            minutes = f" · {row['estimated_minutes']} 分钟" if row["estimated_minutes"] else ""
-            reason = row["selection_reason"].get("reason") or row["excluded_reason"] or ""
-            line = f"{status} · {row['item_text']}{minutes} · {reason}"
-            if excluded:
-                label = QLabel(line)
-                label.setObjectName("BudgetExcludedItem")
-                label.setWordWrap(True)
-                budget_result_layout.addWidget(label)
-                continue
-            from study_app.ui.design_components import disclosure
-            task = QWidget()
-            task_layout = QVBoxLayout(task)
-            task_layout.setContentsMargins(0, 8, 0, 8)
-            task_heading = QLabel(f"{status} · {row['item_text']}{minutes}")
-            task_heading.setWordWrap(True)
-            task_heading.setObjectName("ListTitle")
-            task_layout.addWidget(task_heading)
-            detail = QLabel(reason)
-            detail.setWordWrap(True)
-            detail.setObjectName("Muted")
-            evidence = (row.get('selection_reason') or {}).get('ranking_evidence') or {}
-            evidence_labels = {"priority": "模型排序分值", "forgetting_risk": "遗忘风险权重", "mastery_gap": "掌握缺口权重", "coverage_value": "覆盖权重", "exam_date": "考试日期", "estimate_source": "估时来源"}
-            def evidence_value(key, value):
-                if key == "estimate_source":
-                    return {"confirmed_template": "规则估时", "user": "手动估时", "user_estimate": "手动估时"}.get(value, value)
-                return f"{value:.3f}" if isinstance(value, float) else str(value)
-            extra = [f"{label}：{evidence_value(key, evidence[key])}" for key,label in evidence_labels.items() if evidence.get(key) is not None]
-            detail.setText(reason + ("\n" + "；".join(extra) if extra else ""))
-            details = disclosure("查看依据", detail)
-            task_layout.addWidget(details)
-            checkbox = QCheckBox("已完成" if completed else "标记完成")
-            checkbox.setAccessibleName(f"完成任务：{row['item_text']}")
-            checkbox.setObjectName("BudgetPlanItem")
-            checkbox.setProperty("itemId", row["id"])
-            checkbox.setChecked(completed)
-            checkbox.setEnabled(not preview)
-            if preview:
-                checkbox.setToolTip("确认安排后可记录完成状态")
+            widget, details = _budget_plan_row(
+                row, preview=preview, on_check=update_budget_check
+            )
+            self.budget_result_layout.addWidget(widget)
+            if details is not None:
+                self.task_rows[row["id"]] = (widget, details)
 
-            def update_budget_check(value, item_id=row["id"]):
-                update_study_plan_item_state(item_id, checked=bool(value))
-                invalidate_preview()
-                render_budgeted_plan()
-                budget_status.setText("完成状态已保存")
-
-            checkbox.stateChanged.connect(update_budget_check)
-            task_layout.addWidget(checkbox)
-            budget_result_layout.addWidget(task)
-            task_rows[row['id']] = (task, details)
-
-    def invalidate_preview(*_args):
-        preview_holder['signature'] = None
-        confirm_budget_button.setEnabled(False)
-        if not budget_schema_ready:
+    def invalidate_preview(self, *_args):
+        self.preview_signature = None
+        self.confirm_budget_button.setEnabled(False)
+        if not self.budget_schema_ready:
             return
-        raw = budget_minutes_input.text().strip()
-        total = sum(field.value() for field in estimate_inputs.values())
+        raw = self.budget_minutes_input.text().strip()
+        total = sum(field.value() for field in self.estimate_inputs.values())
         try:
             available = int(raw)
             if not 0 <= available <= 1440:
                 raise ValueError()
             delta = total - available
-            load_label.setText(f"候选 {total} 分钟 · 预算 {available} 分钟 · " +
+            self.load_label.setText(f"候选 {total} 分钟 · 预算 {available} 分钟 · " +
                               (f"超出 {delta} 分钟" if delta > 0 else f"余量 {abs(delta)} 分钟"))
         except ValueError:
-            load_label.setText(f"候选 {total} 分钟 · 预算请输入 0–1440 分钟")
-        budget_status.setText("输入已变更，请重新预览")
+            self.load_label.setText(f"候选 {total} 分钟 · 预算请输入 0–1440 分钟")
+        self.budget_status.setText("输入已变更，请重新预览")
 
-    def generate_budgeted_plan(*, preview_only=False, require_preview=False):
-        nonlocal candidate_collection, loaded_estimates
-        scroll_position = scroll.verticalScrollBar().value()
+    def generate_budgeted_plan(self, *, preview_only=False, require_preview=False):
+        from PySide6.QtCore import QTimer
+        scroll_position = self.page.scroll.verticalScrollBar().value()
         try:
-            raw_budget = budget_minutes_input.text().strip()
-            if not raw_budget:
-                raise ValueError("请填写今日可用时间（0–1440 分钟）")
-            if not raw_budget.isdecimal() or len(raw_budget) > 4 or not 0 <= int(raw_budget) <= 1440:
-                raise ValueError("今日可用时间须为 0–1440 的整数分钟")
-            budget = validate_day_budget_input(
-                state.today.isoformat(), int(raw_budget) if raw_budget else None
+            draft = _prepare_budget_plan(
+                self.page.state,
+                self.page.subject_scope.currentData() or None,
+                self.budget_minutes_input.text(),
+                {name: field.text() for name, field in self.exam_inputs.items()},
+                {task_id: field.value() for task_id, field in self.estimate_inputs.items()},
+                self.candidate_collection,
+                self.candidate_by_id,
+                self.loaded_estimates,
             )
-            exam_dates = {
-                subject_name: validate_subject_exam_date(field.text().strip())
-                for subject_name, field in exam_inputs.items()
-            }
-            estimates = dict(loaded_estimates)
-            new_estimates = {}
-            for task_id, field in estimate_inputs.items():
-                if field.value() > 0:
-                    existing = loaded_estimates.get(task_id)
-                    estimate = (
-                        existing
-                        if existing is not None and existing.estimated_minutes == field.value()
-                        else make_task_estimate(candidate_by_id[task_id], field.value(), USER_ESTIMATE)
-                    )
-                    estimates[task_id] = estimate
-                    if estimate is not existing:
-                        new_estimates[task_id] = estimate
-            prior = get_budgeted_day_plan(state.today.isoformat())
-            prior_done = {r['task_id']: r for r in (prior or {}).get('items', []) if r['checked']}
-            missing = set(prior_done) - set(candidate_by_id)
-            if missing:
-                raise ValueError("已有完成任务不在当前推荐中。请保留当前计划，刷新数据核对后再调整。")
-            enriched = tuple(
-                replace(candidate, estimated_minutes=estimates[candidate.task_id].estimated_minutes,
-                        estimate_source=estimates[candidate.task_id].source,
-                        completion_state="checked" if candidate.task_id in prior_done else candidate.completion_state)
-                if candidate.task_id in estimates else candidate
-                for candidate in candidate_collection.candidates
-            )
-            result = build_budgeted_day_plan(
-                BudgetPlanInput(
-                    budget.plan_date, budget.available_minutes, activity_subject_names(state),
-                    subject_scope.currentData() or None, exam_dates, budget.plan_date,
-                ),
-                CandidateCollection(enriched, candidate_collection.unmapped),
-            )
+            result = draft.plan
             if preview_only:
-                preview_holder['signature'] = result.input_signature
-                rows = []
-                for section, decisions in (("selected", result.selected), ("completed", result.completed), ("excluded", result.excluded)):
-                    for decision in decisions:
-                        rows.append({"id": -(len(rows)+1), "item_text": decision.title,
-                                     "estimated_minutes": decision.estimated_minutes,
-                                     "checked": section == "completed", "excluded_reason": decision.rule_code if section == "excluded" else None,
-                                     "selection_reason": {"reason": decision.reason, "ranking_evidence": dict(decision.ranking_evidence)}})
-                render_budgeted_plan({"summary": {"planned_minutes": result.planned_minutes, "remaining_minutes": result.remaining_minutes,
-                                      "over_budget_completed_minutes": result.over_budget_completed_minutes,
-                                      "completed_occupancy_unknown": result.completed_occupancy_unknown}, "items": rows}, preview=True)
-                budget_status.setText(f"预览：安排 {len(result.selected)} 项，保留已完成 {len(result.completed)} 项，未安排 {len(result.excluded)} 项。确认后保存。")
-                confirm_budget_button.setEnabled(True)
-                QTimer.singleShot(0, lambda: scroll.verticalScrollBar().setValue(scroll_position))
+                self.preview_signature = result.input_signature
+                self.render_budgeted_plan(_preview_budget_plan(draft), preview=True)
+                self.budget_status.setText(
+                    f"预览：安排 {len(result.selected)} 项，保留已完成 {len(result.completed)} 项，"
+                    f"未安排 {len(result.excluded)} 项。确认后保存。"
+                )
+                self.confirm_budget_button.setEnabled(True)
+                QTimer.singleShot(0, lambda: self.page.scroll.verticalScrollBar().setValue(scroll_position))
                 return
-            if require_preview and preview_holder['signature'] != result.input_signature:
-                invalidate_preview()
-                budget_status.setText("任务状态已变化，请重新预览后确认。")
+            if require_preview and self.preview_signature != result.input_signature:
+                self.invalidate_preview()
+                self.budget_status.setText("任务状态已变化，请重新预览后确认。")
                 return
-            save_study_day_budget(budget.plan_date, budget.available_minutes)
-            for subject_name, exam_date in exam_dates.items():
-                save_subject_exam_date(state, subject_name, exam_date)
-            for task_id, estimate in new_estimates.items():
-                save_task_estimate(state, candidate_by_id[task_id], estimate.estimated_minutes,
-                                   estimate.source)
-            create_budgeted_day_plan(budget.plan_date, budget.available_minutes, result)
-            loaded_estimates = estimates
-            preview_holder["signature"] = None
-            budget_apply_button.setFocus()
-            confirm_budget_button.setEnabled(False)
-            render_budgeted_plan()
-            budget_status.setText("今日安排已保存")
-            QTimer.singleShot(0, lambda: scroll.verticalScrollBar().setValue(scroll_position))
+            _save_budget_plan(draft, self.page.state, self.candidate_by_id)
+            self.loaded_estimates = draft.estimates
+            self.preview_signature = None
+            self.budget_apply_button.setFocus()
+            self.confirm_budget_button.setEnabled(False)
+            self.render_budgeted_plan()
+            self.budget_status.setText("今日安排已保存")
+            QTimer.singleShot(0, lambda: self.page.scroll.verticalScrollBar().setValue(scroll_position))
         except Exception as error:
-            budget_status.setText(f"时间预算计划未保存：{error}")
-            confirm_budget_button.setEnabled(False)
-            preview_holder["signature"] = None
+            self.budget_status.setText(f"时间预算计划未保存：{error}")
+            self.confirm_budget_button.setEnabled(False)
+            self.preview_signature = None
 
-    def mark_manual_estimate(task_id: str, value: int):
-        existing = loaded_estimates.get(task_id)
-        field = estimate_inputs[task_id]
+    def mark_manual_estimate(self, task_id: str, value: int):
+        existing = self.loaded_estimates.get(task_id)
+        field = self.estimate_inputs[task_id]
         if existing is None or existing.estimated_minutes != value:
             field.setSuffix(" 分钟 · 手动")
         elif existing.source == USER_ESTIMATE:
@@ -749,71 +1306,119 @@ def study_plan_page(state: DashboardState):
         else:
             field.setSuffix(" 分钟 · 助理估时")
 
-    for task_id, field in estimate_inputs.items():
-        field.valueChanged.connect(
-            lambda value, current_task_id=task_id: mark_manual_estimate(current_task_id, value)
+
+class _DetailedPlanPanel:
+    """详细计划展示、完成反馈和出卷操作。"""
+
+    def __init__(self, page):
+        from PySide6.QtWidgets import QLabel, QProgressBar, QVBoxLayout, QWidget
+        self.page = page
+        self._build_tools()
+
+        self.phase_status = QLabel()
+        self.phase_status.setObjectName("StatusLabel")
+        self.phase_status.setWordWrap(True)
+        self.layout.addWidget(self.phase_status)
+        self.plan_host = QWidget()
+        self.plan_layout = QVBoxLayout(self.plan_host)
+        self.plan_layout.setContentsMargins(0, 0, 0, 0)
+        self.plan_layout.setSpacing(14)
+        self.progress_label = QLabel("计划进度：尚未生成")
+        self.progress_label.setObjectName("StatusLabel")
+        self.progress_label.setWordWrap(True)
+        self.progress_bar = QProgressBar()
+        self.progress_bar.setRange(0, 100)
+        self.progress_bar.setValue(0)
+        self.layout.addWidget(self.progress_label)
+        self.layout.addWidget(self.progress_bar)
+        placeholder = QLabel("暂无计划")
+        placeholder.setObjectName("Muted")
+        placeholder.setWordWrap(True)
+        self.plan_layout.addWidget(placeholder)
+        self.layout.addWidget(self.plan_host)
+        self.pdf_session = _ChatGPTPDFSession(
+            self.page.content, self.progress_label, self.stop_pdf_button, self.page.WorkerSignalRelay, self.page.ChatGPTBridgeThread
         )
+        self.page.content._chatgpt_pdf_session = self.pdf_session
+        self.stop_pdf_button.clicked.connect(self.pdf_session.stop)
 
-    budget_apply_button.clicked.connect(lambda _checked=False: generate_budgeted_plan(preview_only=True))
-    confirm_budget_button.clicked.connect(lambda _checked=False: generate_budgeted_plan(require_preview=True))
-    for field in [budget_minutes_input, *exam_inputs.values()]:
-        field.textChanged.connect(invalidate_preview)
-    for field in estimate_inputs.values():
-        field.valueChanged.connect(invalidate_preview)
-    invalidate_preview()
-    if budget_schema_ready:
-        budget_status.setText("")
+    def _build_tools(self):
+        from PySide6.QtWidgets import QComboBox, QGridLayout, QPushButton, QSizePolicy, QVBoxLayout, QWidget
 
-    phase_status = QLabel()
-    phase_status.setObjectName("StatusLabel")
-    phase_status.setWordWrap(True)
-    layout.addWidget(phase_status)
+        actions = QGridLayout()
+        actions.setHorizontalSpacing(10)
+        actions.setVerticalSpacing(10)
+        for column in range(4):
+            actions.setColumnStretch(column, 1)
+        self.generate_button = QPushButton("生成今日计划")
+        self.generate_button.setObjectName("PrimaryButton")
+        self.final_review_button = QPushButton("期末复习模式")
+        self.final_review_button.setObjectName("GhostButton")
+        self.clear_button = QPushButton("清空计划")
+        self.clear_button.setObjectName("GhostButton")
+        self.copy_context_button = QPushButton("复制题库上下文")
+        self.copy_context_button.setObjectName("GhostButton")
+        self.mock_exam_mode = QComboBox()
+        self.mock_exam_mode.addItem("诊断卷", "diagnostic")
+        self.mock_exam_mode.addItem("标准期末卷", "standard")
+        self.mock_exam_mode.addItem("冲刺专题卷", "sprint")
+        self.mock_exam_button = QPushButton("生成模拟卷 PDF")
+        self.mock_exam_button.setObjectName("GhostButton")
+        self.stop_pdf_button = QPushButton("停止 PDF 生成")
+        self.stop_pdf_button.setObjectName("DangerButton")
+        self.stop_pdf_button.setVisible(False)
+        self.stop_pdf_button.setDisabled(True)
+        for control in (
+            self.generate_button,
+            self.final_review_button,
+            self.clear_button,
+            self.copy_context_button,
+            self.mock_exam_mode,
+            self.mock_exam_button,
+            self.stop_pdf_button,
+        ):
+            control.setSizePolicy(
+                QSizePolicy.Policy.Expanding,
+                QSizePolicy.Policy.Fixed,
+            )
+        actions.addWidget(self.generate_button, 0, 0, 1, 4)
+        actions.addWidget(self.final_review_button, 1, 0, 1, 2)
+        actions.addWidget(self.clear_button, 1, 2)
+        actions.addWidget(self.copy_context_button, 1, 3)
+        actions.addWidget(self.mock_exam_mode, 2, 0, 1, 2)
+        actions.addWidget(self.mock_exam_button, 2, 2)
+        actions.addWidget(self.stop_pdf_button, 2, 3)
+        self.widget = QWidget()
+        self.layout = QVBoxLayout(self.widget)
+        self.layout.setContentsMargins(0, 0, 0, 0)
+        self.layout.addLayout(actions)
 
-    plan_host = QWidget()
-    plan_layout = QVBoxLayout(plan_host)
-    plan_layout.setContentsMargins(0, 0, 0, 0)
-    plan_layout.setSpacing(14)
-    progress_label = QLabel("计划进度：尚未生成")
-    progress_label.setObjectName("StatusLabel")
-    progress_label.setWordWrap(True)
-    progress_bar = QProgressBar()
-    progress_bar.setRange(0, 100)
-    progress_bar.setValue(0)
-    layout.addWidget(progress_label)
-    layout.addWidget(progress_bar)
-    placeholder = QLabel("暂无计划")
-    placeholder.setObjectName("Muted")
-    placeholder.setWordWrap(True)
-    plan_layout.addWidget(placeholder)
-    layout.addWidget(plan_host)
-    layout.addStretch()
-
-    def clear_layout():
-        while plan_layout.count():
-            item = plan_layout.takeAt(0)
+    def clear_layout(self):
+        while self.plan_layout.count():
+            item = self.plan_layout.takeAt(0)
             widget = item.widget()
             if widget is not None:
                 widget.deleteLater()
 
-    def set_generation_busy(busy: bool):
-        generate_button.setDisabled(busy)
-        final_review_button.setDisabled(busy)
-        clear_button.setDisabled(busy)
-        mock_exam_button.setDisabled(busy)
-        mock_exam_mode.setDisabled(busy)
-        subject_scope.setDisabled(busy)
+    def set_generation_busy(self, busy: bool):
+        self.generate_button.setDisabled(busy)
+        self.final_review_button.setDisabled(busy)
+        self.clear_button.setDisabled(busy)
+        self.mock_exam_button.setDisabled(busy)
+        self.mock_exam_mode.setDisabled(busy)
+        self.page.subject_scope.setDisabled(busy)
         if busy:
-            generate_button.setText("正在生成...")
-            progress_bar.setRange(0, 0)
-            progress_label.setText("正在生成计划…")
+            self.generate_button.setText("正在生成...")
+            self.progress_bar.setRange(0, 0)
+            self.progress_label.setText("正在生成计划…")
         else:
-            generate_button.setText("生成今日计划")
-            progress_bar.setRange(0, 100)
+            self.generate_button.setText("生成今日计划")
+            self.progress_bar.setRange(0, 100)
 
-    def refresh_phase_status():
+    def refresh_phase_status(self):
         from study_app.core.study_phase import exam_scope_label, is_final_review
 
-        active = [name for name in final_review_subject_names(state) if is_final_review(name)]
+        active = [name for name in final_review_subject_names(self.page.state) if is_final_review(name)]
         if active:
             active_text = "、".join(
                 f"{name}（考试范围：{exam_scope_label(name)}）"
@@ -821,96 +1426,31 @@ def study_plan_page(state: DashboardState):
                 else name
                 for name in active
             )
-            phase_status.setText(
+            self.phase_status.setText(
                 "期末复习模式已启用：" + active_text
                 + "。这些学科将提高掌握度缺口权重与综合题比例；无题目证据时按初始掌握度参与排序。"
             )
         else:
-            phase_status.setText("当前没有学科启用期末复习模式。")
+            self.phase_status.setText("当前没有学科启用期末复习模式。")
 
-    def manage_final_review_modes():
-        nonlocal state
-        from study_app.core.study_phase import exam_scope_label, is_final_review, set_subject_phase
+    def manage_final_review_modes(self):
+        from PySide6.QtWidgets import QMessageBox
 
-        dialog = QDialog(content)
-        dialog.setWindowTitle("管理期末复习模式")
-        dialog.setMinimumWidth(520)
-        dialog_layout = QVBoxLayout(dialog)
-        dialog_layout.setContentsMargins(24, 22, 24, 22)
-        dialog_layout.setSpacing(14)
-
-        dialog_title = QLabel("选择进入期末复习阶段的学科")
-        dialog_title.setObjectName("SectionTitle")
-        dialog_hint = QLabel(
-            "启用后，该学科仍使用统一的加权优先级排序，但掌握度缺口权重会提高，"
-            "并增加跨章节综合练习比例；无题目证据的知识点按初始掌握度参与排序。"
-        )
-        dialog_hint.setObjectName("Muted")
-        dialog_hint.setWordWrap(True)
-        dialog_layout.addWidget(dialog_title)
-        dialog_layout.addWidget(dialog_hint)
-
-        phase_checks = {}
-        initial_states = {}
-        for subject_name in final_review_subject_names(state):
-            checked = is_final_review(subject_name)
-            initial_states[subject_name] = checked
-            scope_label = exam_scope_label(subject_name)
-            checkbox = QCheckBox(
-                f"{subject_name}（考试范围：{scope_label}）"
-                if scope_label
-                else subject_name
-            )
-            checkbox.setChecked(checked)
-            phase_checks[subject_name] = checkbox
-            dialog_layout.addWidget(checkbox)
-
-        button_row = QHBoxLayout()
-        cancel_button = QPushButton("取消")
-        cancel_button.setObjectName("GhostButton")
-        save_button = QPushButton("保存设置")
-        save_button.setObjectName("PrimaryButton")
-        button_row.addStretch()
-        button_row.addWidget(cancel_button)
-        button_row.addWidget(save_button)
-        dialog_layout.addLayout(button_row)
-
-        cancel_button.clicked.connect(dialog.reject)
-
-        def save_modes():
-            changed = []
-            for subject_name, checkbox in phase_checks.items():
-                enabled = checkbox.isChecked()
-                if enabled == initial_states[subject_name]:
-                    continue
-                set_subject_phase(subject_name, "final_review" if enabled else "regular")
-                archive_active_study_plan(subject_name)
-                changed.append(subject_name)
-            if changed:
-                archive_active_study_plan(None)
-                delete_settings_by_prefix("daily_summary_cache:")
-            dialog.accept()
-
-        save_button.clicked.connect(save_modes)
-        if dialog.exec() != QDialog.DialogCode.Accepted:
+        changed_text = _edit_final_review_modes(self.page.content, self.page.state)
+        if changed_text is None:
             return
-
-        state = load_dashboard_state()
-        refresh_phase_status()
-        render_saved_plan(get_active_study_plan(subject_scope.currentData() or None))
-        changed_text = [
-            f"{name}：{'已启用' if phase_checks[name].isChecked() else '已退出'}"
-            for name in phase_checks
-            if phase_checks[name].isChecked() != initial_states[name]
-        ]
+        self.page.state = load_dashboard_state()
+        self.refresh_phase_status()
+        self.render_saved_plan(get_active_study_plan(self.page.subject_scope.currentData() or None))
         if changed_text:
             QMessageBox.information(
-                content,
+                self.page.content,
                 "期末复习模式已更新",
                 "\n".join(changed_text) + "\n\n相关旧计划已归档，请重新生成今日计划。",
             )
 
     def finish_plan_generation(
+        self,
         plan,
         plan_source: str,
         subject_name: str | None,
@@ -918,76 +1458,50 @@ def study_plan_page(state: DashboardState):
         input_signature: str,
         revision_token,
     ):
-        set_generation_busy(False)
+        from PySide6.QtWidgets import QMessageBox
+        self.set_generation_busy(False)
         if plan_source != "local":
-            progress_label.setText(plan_source)
-        revalidate_subject_revision(revision_token)
-        create_study_plan(
-            subject_name,
-            generation_date.isoformat(),
-            generation_date.isoformat(),
-            input_signature,
-            plan,
-            build_study_plan_items(plan),
+            self.progress_label.setText(plan_source)
+        _save_generated_plan(
+            plan, subject_name, generation_date, input_signature, revision_token
         )
-        delete_settings_by_prefix("daily_summary_cache:")
-        render_saved_plan(get_active_study_plan(subject_name), allow_auto_refresh=False, reload_state=False)
+        self.render_saved_plan(get_active_study_plan(subject_name), allow_auto_refresh=False, reload_state=False)
         if (
             plan_source.startswith("LLM 增强计划生成失败")
             or plan_source.startswith("已显示本地计划；LLM 增强未通过校验")
         ):
             QMessageBox.warning(
-                content,
+                self.page.content,
                 "LLM 计划生成失败",
                 "LLM 增强计划未能生成可保存结果；系统已保留本地计划。\n\n"
                 f"详细原因：{plan_source}",
             )
 
-    def fail_plan_generation(error: str):
-        set_generation_busy(False)
-        progress_label.setText("计划生成失败，请检查网络或 LLM 设置后重试。")
-        QMessageBox.warning(content, "计划生成失败", error)
+    def fail_plan_generation(self, error: str):
+        from PySide6.QtWidgets import QMessageBox
+        self.set_generation_busy(False)
+        self.progress_label.setText("计划生成失败，请检查网络或 LLM 设置后重试。")
+        QMessageBox.warning(self.page.content, "计划生成失败", error)
 
-    def active_plan_generation_token():
-        return getattr(content, "_plan_generation_token", None)
-
-    def clear_plan_generation_state(token=None):
-        if token is not None and active_plan_generation_token() is not token:
-            return
-        setattr(content, "_plan_worker", None)
-        setattr(content, "_plan_generation_token", None)
-        watchdog = getattr(content, "_plan_worker_watchdog", None)
-        if watchdog is not None:
-            watchdog.stop()
-            watchdog.deleteLater()
-            setattr(content, "_plan_worker_watchdog", None)
-
-    def render_plan(force_regenerate: bool = False):
-        nonlocal state
-        if getattr(content, "_plan_worker", None) is not None:
-            worker = content._plan_worker
+    def render_plan(self, force_regenerate: bool = False):
+        from PySide6.QtWidgets import QMessageBox
+        if getattr(self.page.content, "_plan_worker", None) is not None:
+            worker = self.page.content._plan_worker
             if worker.isRunning():
                 return
-        delete_settings_by_prefix("daily_summary_cache:")
-        state = load_dashboard_state()
-        clear_layout()
-        subject_name = subject_scope.currentData() or None
+        self.page.state = _start_plan_generation_state()
+        self.clear_layout()
+        subject_name = self.page.subject_scope.currentData() or None
         plan_llm_hint = llm_plan_unavailable_hint()
-        active_plan = get_active_study_plan(subject_name)
+        active_plan = _reusable_active_plan(self.page.state, subject_name, force_regenerate)
         if active_plan:
-            should_regenerate = (
-                force_regenerate
-                or should_refresh_plan_for_model(active_plan, state, subject_name)
-                or should_upgrade_plan_to_llm(active_plan)
-            )
-            if not should_regenerate:
-                render_saved_plan(active_plan)
-                if plan_llm_hint:
-                    QMessageBox.information(content, "未使用 LLM 生成计划", plan_llm_hint)
-                return
-        set_generation_busy(True)
-        generation_date = state.today
-        generation_signature = current_study_plan_signature(state, subject_name)
+            self.render_saved_plan(active_plan)
+            if plan_llm_hint:
+                QMessageBox.information(self.page.content, "未使用 LLM 生成计划", plan_llm_hint)
+            return
+        self.set_generation_busy(True)
+        generation_date = self.page.state.today
+        generation_signature = current_study_plan_signature(self.page.state, subject_name)
         try:
             lifecycle_revision_token = (
                 capture_subject_revision(DEFAULT_DB_PATH, subject_name)
@@ -995,28 +1509,14 @@ def study_plan_page(state: DashboardState):
                 else None
             )
         except Exception as error:
-            fail_plan_generation(str(error))
+            self.fail_plan_generation(str(error))
             return
-        generation_token = object()
-        content._plan_generation_token = generation_token
-        worker = PlanGenerationThread(
-            state, subject_name, lifecycle_revision_token, content
+        worker = self.page.PlanGenerationThread(
+            self.page.state, subject_name, lifecycle_revision_token, self.page.content
         )
-        content._plan_worker = worker
 
-        def abandon_if_page_destroyed():
-            if active_plan_generation_token() is generation_token:
-                setattr(content, "_plan_worker", None)
-                setattr(content, "_plan_generation_token", None)
-                setattr(content, "_plan_worker_watchdog", None)
-
-        content.destroyed.connect(abandon_if_page_destroyed)
-
-        def finish_if_current(plan, source):
-            if active_plan_generation_token() is not generation_token:
-                return
-            clear_plan_generation_state(generation_token)
-            finish_plan_generation(
+        def on_completed(plan, source):
+            self.finish_plan_generation(
                 plan,
                 source,
                 subject_name,
@@ -1025,76 +1525,47 @@ def study_plan_page(state: DashboardState):
                 lifecycle_revision_token,
             )
 
-        def fail_if_current(error):
-            if active_plan_generation_token() is not generation_token:
-                return
-            clear_plan_generation_state(generation_token)
-            fail_plan_generation(error)
-
-        def timeout_if_current():
-            if active_plan_generation_token() is not generation_token:
-                return
-            worker.requestInterruption()
-            clear_plan_generation_state(generation_token)
-            set_generation_busy(False)
-            progress_label.setText("LLM 计划生成超过 90 秒，已停止等待。请稍后重试，或临时切换为本地模式。")
+        def on_timeout():
+            self.set_generation_busy(False)
+            self.progress_label.setText("LLM 计划生成超过 90 秒，已停止等待。请稍后重试，或临时切换为本地模式。")
             QMessageBox.warning(
-                content,
+                self.page.content,
                 "LLM 计划生成超时",
                 "LLM 计划生成超过 90 秒仍未返回，系统已停止等待，避免界面长时间卡住。\n\n"
                 "如果后台请求稍后返回，应用会忽略这次过期结果；你可以重新点击生成计划。",
             )
 
-        watchdog = QTimer(content)
-        watchdog.setSingleShot(True)
-        watchdog.timeout.connect(timeout_if_current)
-        content._plan_worker_watchdog = watchdog
-
-        def release_worker():
-            clear_plan_generation_state(generation_token)
-
-        relay = WorkerSignalRelay(
-            on_completed=finish_if_current,
-            on_failed=fail_if_current,
-            on_finished=release_worker,
-            parent=content,
+        session = _PlanGenerationSession(
+            self.page.content, worker, self.page.WorkerSignalRelay,
+            on_completed, self.fail_plan_generation, on_timeout,
         )
-        worker.completed.connect(relay.completed)
-        worker.failed.connect(relay.failed)
-        worker.finished.connect(relay.finished)
-        watchdog.start(90000)
-        try:
-            worker.start()
-        except Exception as error:
-            clear_plan_generation_state(generation_token)
-            relay.deleteLater()
-            fail_plan_generation(str(error))
+        if not session.start():
             return
         if plan_llm_hint:
-            QMessageBox.information(content, "未使用 LLM 生成计划", plan_llm_hint)
+            QMessageBox.information(self.page.content, "未使用 LLM 生成计划", plan_llm_hint)
 
-    def render_saved_plan(saved_plan, *, allow_auto_refresh: bool = True, reload_state: bool = True):
+    def render_saved_plan(self, saved_plan, *, allow_auto_refresh: bool = True, reload_state: bool = True):
+        from PySide6.QtWidgets import QLabel
         from PySide6.QtCore import QTimer
 
-        nonlocal state
-        subject_name = subject_scope.currentData() or None
+        subject_name = self.page.subject_scope.currentData() or None
         if reload_state:
-            state = load_dashboard_state()
-        if allow_auto_refresh and saved_plan and should_refresh_plan_for_model(saved_plan, state, subject_name):
-            render_plan()
+            self.page.state = load_dashboard_state()
+        if allow_auto_refresh and saved_plan and should_refresh_plan_for_model(saved_plan, self.page.state, subject_name):
+            self.render_plan()
             return
-        scroll_position = scroll.verticalScrollBar().value()
-        clear_layout()
-        progress_bar.setVisible(bool(saved_plan))
-        clear_button.setEnabled(bool(saved_plan))
-        clear_button.setToolTip("归档当前详细计划" if saved_plan else "尚无可清空的详细计划")
+        scroll_position = self.page.scroll.verticalScrollBar().value()
+        self.clear_layout()
+        self.progress_bar.setVisible(bool(saved_plan))
+        self.clear_button.setEnabled(bool(saved_plan))
+        self.clear_button.setToolTip("归档当前详细计划" if saved_plan else "尚无可清空的详细计划")
         if not saved_plan:
-            progress_label.setText("计划进度：尚未生成")
-            progress_bar.setValue(0)
+            self.progress_label.setText("计划进度：尚未生成")
+            self.progress_bar.setValue(0)
             note = QLabel("暂无计划")
             note.setObjectName("Muted")
             note.setWordWrap(True)
-            plan_layout.addWidget(note)
+            self.plan_layout.addWidget(note)
             return
         plan = saved_plan["plan"]
         item_by_hash = {
@@ -1109,8 +1580,8 @@ def study_plan_page(state: DashboardState):
             done = sum(1 for item in checkboxes if item.isChecked())
             percent = round(done / total * 100) if total else 0
             suffix = f"  | 当前计划生成于 {created_at}" if created_at else ""
-            progress_label.setText(f"计划进度：{done}/{total} 项已完成{suffix}")
-            progress_bar.setValue(percent)
+            self.progress_label.setText(f"计划进度：{done}/{total} 项已完成{suffix}")
+            self.progress_bar.setValue(percent)
 
         for title, key, interactive in [
             ("当前判断", "judgement", False),
@@ -1127,11 +1598,11 @@ def study_plan_page(state: DashboardState):
                 interactive=interactive,
                 section_key=key,
                 subject_scope=subject_name,
-                on_result=record_plan_result,
-                on_check=record_plan_check,
-                on_copy_practice_prompt=copy_practice_prompt if key == "short" else None,
-                on_send_chatgpt=send_practice_prompt_to_chatgpt if key == "short" else None,
-                on_generate_local_pdf=generate_local_practice_pdf if key == "short" else None,
+                on_result=self.record_plan_result,
+                on_check=self.record_plan_check,
+                on_copy_practice_prompt=self.copy_practice_prompt if key == "short" else None,
+                on_send_chatgpt=self.send_practice_prompt_to_chatgpt if key == "short" else None,
+                on_generate_local_pdf=self.generate_local_practice_pdf if key == "short" else None,
                 item_by_hash=item_by_hash,
                 result_predicate=is_plan_homework_item,
                 show_checkbox=True,
@@ -1140,322 +1611,111 @@ def study_plan_page(state: DashboardState):
             for checkbox in card_checks:
                 checkbox.stateChanged.connect(update_progress)
             checkboxes.extend(card_checks)
-            plan_layout.addWidget(card)
+            self.plan_layout.addWidget(card)
             if key == "short":
-                summary = plan_day_feedback_card(saved_plan, state, subject_name)
+                summary = plan_day_feedback_card(saved_plan, self.page.state, subject_name)
                 if summary is not None:
-                    plan_layout.addWidget(summary)
+                    self.plan_layout.addWidget(summary)
         update_progress()
-        restore_scroll_timer = QTimer(scroll)
+        restore_scroll_timer = QTimer(self.page.scroll)
         restore_scroll_timer.setSingleShot(True)
         restore_scroll_timer.timeout.connect(
-            lambda: scroll.verticalScrollBar().setValue(scroll_position)
+            lambda: self.page.scroll.verticalScrollBar().setValue(scroll_position)
         )
         restore_scroll_timer.start(0)
 
-    def clear_plan():
-        archive_active_study_plan(subject_scope.currentData() or None)
-        delete_settings_by_prefix("daily_summary_cache:")
-        clear_layout()
-        progress_label.setText("计划进度：尚未生成")
-        progress_bar.setValue(0)
+    def clear_plan(self):
+        from PySide6.QtWidgets import QLabel
+        _archive_current_plan(self.page.subject_scope.currentData() or None)
+        self.clear_layout()
+        self.progress_label.setText("计划进度：尚未生成")
+        self.progress_bar.setValue(0)
         note = QLabel("计划已清空")
         note.setObjectName("Muted")
         note.setWordWrap(True)
-        plan_layout.addWidget(note)
+        self.plan_layout.addWidget(note)
 
-    def record_plan_check(item_id: int, checked: bool):
-        update_study_plan_item_state(item_id, checked=checked)
+    def record_plan_check(self, item_id: int, checked: bool):
+        _set_plan_item_checked(item_id, checked)
         if checked:
             from PySide6.QtCore import QTimer
 
-            maybe_show_completed_day_feedback()
+            self.maybe_show_completed_day_feedback()
             QTimer.singleShot(
                 0,
-                lambda: render_saved_plan(get_active_study_plan(subject_scope.currentData() or None)),
+                lambda: self.render_saved_plan(get_active_study_plan(self.page.subject_scope.currentData() or None)),
             )
 
-    def record_plan_result(line: str, is_correct: bool, item_id: int | None = None):
-        nonlocal state
-        from datetime import date
-        import re
+    def record_plan_result(self, line: str, is_correct: bool, item_id: int | None = None):
         from PySide6.QtWidgets import QMessageBox
-
-        subject, topic = infer_subject_topic_from_plan_line(line, subject_scope.currentData() or None)
-        subject_before = next((item for item in state.subjects if item.name == subject), None)
-        feedback_key = f"study_plan_item_feedback:{item_id}" if item_id is not None else ""
-        feedback_snapshot = get_setting(feedback_key, {}) if feedback_key else {}
-        if subject_before and not feedback_snapshot.get("before_captured"):
-            feedback_snapshot.update(
-                {
-                    "before_captured": True,
-                    "window_score_before": subject_before.window_score,
-                    "covered_mastery_before": subject_before.covered_mastery_score,
-                    "total_mastery_before": subject_before.mastery_score,
-                }
-            )
-            set_setting(feedback_key, feedback_snapshot)
-        difficulty_match = re.search(r"参考难度\s*(\d+(?:\.\d+)?)\s*/\s*100", line)
-        difficulty_score = float(difficulty_match.group(1)) if difficulty_match else None
-        score = planned_homework_score(difficulty_score, is_correct)
-        result_text = "完成正确" if is_correct else "完成有误"
-        record = {
-            "date": date.today().isoformat(),
-            "subject": subject,
-            "module": None,
-            "topic": topic,
-            "activity": "review_exercise",
-            "source": "outside_class",
-            "score": score,
-            "note": f"学习计划项{result_text}：{line}",
-            "problems": [
-                {
-                    "title": f"学习计划作业：{topic}",
-                    "statement": line,
-                    "answer_result": "全对" if is_correct else "错误",
-                    "status": "correct" if is_correct else "wrong",
-                    "correctness": 100 if is_correct else 0,
-                    "partial_credit": 1.0 if is_correct else 0.0,
-                    "error_cause": "" if is_correct else "学习计划作业完成有误，需要复盘错因",
-                    "related_topics": [topic],
-                    "difficulty_score": difficulty_score,
-                    "difficulty_source": "planned_reference" if difficulty_score is not None else "planned_homework",
-                }
-            ],
-        }
+        draft = _prepare_homework_result(
+            line, is_correct, item_id, self.page.state, self.page.subject_scope.currentData() or None
+        )
         try:
-            add_learning_record(
-                record,
-                study_plan_item_id=item_id,
-                study_plan_result="correct" if is_correct else "wrong",
-            )
+            _commit_homework_result(draft, is_correct)
         except Exception as error:
-            QMessageBox.critical(content, "记录失败", str(error))
+            QMessageBox.critical(self.page.content, "记录失败", str(error))
             return False
         try:
-            delete_settings_by_prefix("daily_summary_cache:")
-            state = load_dashboard_state()
-            subject_after = next((item for item in state.subjects if item.name == subject), None)
-            if feedback_key and subject_after:
-                feedback_snapshot.update(
-                    {
-                        "result_score": score,
-                        "window_score_after": subject_after.window_score,
-                        "covered_mastery_after": subject_after.covered_mastery_score,
-                        "total_mastery_after": subject_after.mastery_score,
-                    }
-                )
-                set_setting(feedback_key, feedback_snapshot)
-            maybe_show_completed_day_feedback()
-            render_saved_plan(get_active_study_plan(subject_scope.currentData() or None))
+            self.page.state = _refresh_homework_feedback(draft)
+            self.maybe_show_completed_day_feedback()
+            self.render_saved_plan(get_active_study_plan(self.page.subject_scope.currentData() or None))
         except Exception:
             QMessageBox.warning(
-                content,
+                self.page.content,
                 "记录已保存",
-                "学习记录已写入，但页面刷新失败。",
+                "学习记录已写入，但页面刷新失败。" + draft.fallback_hint,
             )
             return True
-        QMessageBox.information(content, "已记录", f"已按“{result_text}”写入学习记录，难度折算分 {score:.1f}。")
+        QMessageBox.information(
+            self.page.content,
+            "已记录",
+            f"已按“{draft.result_text}”写入学习记录，难度折算分 {draft.score_result.score:.1f}。"
+            + draft.fallback_hint,
+        )
         return True
 
-    def copy_practice_prompt(line: str):
+    def copy_practice_prompt(self, line: str):
         from PySide6.QtWidgets import QApplication, QMessageBox
 
-        prompt = build_practice_generation_prompt(line, state, subject_scope.currentData() or None)
+        prompt = build_practice_generation_prompt(line, self.page.state, self.page.subject_scope.currentData() or None)
         QApplication.clipboard().setText(prompt)
         if is_oj_plan_homework(line):
-            QMessageBox.information(content, "已复制", "已复制 LeetCode 原题清单，可直接按官方链接练习并提交。")
+            QMessageBox.information(self.page.content, "已复制", "已复制 LeetCode 原题清单，可直接按官方链接练习并提交。")
         else:
-            QMessageBox.information(content, "已复制", "已复制出题提示词，可直接粘贴给 Codex、GPT 或其他 LLM。")
+            QMessageBox.information(self.page.content, "已复制", "已复制出题提示词，可直接粘贴给 Codex、GPT 或其他 LLM。")
 
-    def set_pdf_generation_busy(busy: bool):
-        stop_pdf_button.setVisible(busy)
-        stop_pdf_button.setDisabled(not busy)
-
-    def watch_global_pdf_worker(worker):
-        def release_busy():
-            if getattr(content, "_chatgpt_bridge_page_alive", False):
-                set_pdf_generation_busy(False)
-
-        relay = WorkerSignalRelay(on_finished=release_busy, parent=content)
-        worker.finished.connect(relay.finished)
-        if worker.isFinished():
-            relay.finished()
-
-    def stop_pdf_generation():
-        from PySide6.QtWidgets import QMessageBox
-
-        with _CHATGPT_BRIDGE_LOCK:
-            workers = list(_CHATGPT_BRIDGE_WORKERS)
-        for worker in workers:
-            if worker.isRunning():
-                try:
-                    result = worker.cancel()
-                except Exception:
-                    QMessageBox.warning(
-                        content,
-                        "停止 PDF 生成失败",
-                        "未能停止当前 PDF 生成任务，请稍后重试。",
-                    )
-                    return
-                if not result.success:
-                    QMessageBox.warning(
-                        content,
-                        "停止 PDF 生成失败",
-                        "未能停止当前 PDF 生成任务，请稍后重试。",
-                    )
-                    return
-        for worker in workers:
-            worker.cancelled = True
-        set_pdf_generation_busy(False)
-        progress_label.setText("已手动停止 ChatGPT PDF 生成，并清理临时提示词。")
-        QMessageBox.information(content, "已停止", "已停止当前 ChatGPT PDF 生成流程。")
-
-    def start_chatgpt_pdf_prompt(prompt: str):
-        from PySide6.QtWidgets import QApplication, QMessageBox
-
-        with _CHATGPT_BRIDGE_LOCK:
-            active_threads = list(_CHATGPT_BRIDGE_WORKERS)
-        if active_threads:
-            set_pdf_generation_busy(True)
-            watch_global_pdf_worker(active_threads[0])
-            QMessageBox.information(
-                content,
-                "正在生成 PDF",
-                "已有一个 ChatGPT PDF 生成任务正在运行。你可以点击“停止 PDF 生成”后再启动新的任务。",
-            )
-            return
-        task_token = object()
-        content._chatgpt_pdf_active_token = task_token
-        set_pdf_generation_busy(True)
-        progress_label.setText("正在让 ChatGPT 生成 PDF；生成期间可以继续使用学习应用...")
-        thread = ChatGPTBridgeThread(prompt, content)
-        thread.task_token = task_token
-        bridge_threads = getattr(content, "_chatgpt_bridge_threads", [])
-        bridge_threads.append(thread)
-        content._chatgpt_bridge_threads = bridge_threads
-
-        def detach_bridge(worker, token):
-            workers = getattr(content, "_chatgpt_bridge_threads", [])
-            if worker in workers:
-                workers.remove(worker)
-            if not getattr(content, "_chatgpt_bridge_page_alive", False):
-                return False
-            is_current = getattr(content, "_chatgpt_pdf_active_token", None) is token
-            if is_current and not any(item.isRunning() for item in workers):
-                set_pdf_generation_busy(False)
-            return is_current
-
-        def finish_bridge(result, original_prompt, worker=thread, token=task_token):
-            if not detach_bridge(worker, token):
-                return
-            if worker.cancelled:
-                progress_label.setText("ChatGPT PDF 生成已手动停止。")
-                return
-            if result.success:
-                if result.code != "pdf_opened":
-                    progress_label.setText("PDF 已下载，但未能自动打开。")
-                    QMessageBox.warning(
-                        content,
-                        "PDF 已下载但未打开",
-                        f"PDF 已安全下载，但系统未能自动打开文件。\n\n文件位置：\n{result.pdf_path}",
-                    )
-                    return
-                progress_label.setText("ChatGPT 已生成 PDF，并已自动打开。")
-                QMessageBox.information(
-                    content,
-                    "PDF 已生成",
-                    f"ChatGPT 已完成生成，PDF 已归档并自动打开。\n\n临时文件位置：\n{result.pdf_path}",
-                )
-                return
-            QApplication.clipboard().setText(original_prompt)
-            progress_label.setText("ChatGPT 自动生成 PDF 失败，提示词已复制。")
-            QMessageBox.warning(
-                content,
-                "ChatGPT 自动生成失败",
-                "ChatGPT 未能完成 PDF 生成。为避免丢失，出题提示词已复制到剪贴板。",
-            )
-
-        def fail_bridge(_error, worker=thread, token=task_token):
-            if not detach_bridge(worker, token):
-                return
-            if worker.cancelled:
-                progress_label.setText("ChatGPT PDF 生成已手动停止。")
-                return
-            progress_label.setText("ChatGPT 自动生成 PDF 失败，请检查桌面端状态后重试。")
-            QMessageBox.warning(
-                content,
-                "ChatGPT 自动生成失败",
-                "ChatGPT 桌面桥接发生错误，请检查桌面端状态后重试。",
-            )
-
-        relay = WorkerSignalRelay(
-            on_completed=finish_bridge,
-            on_failed=fail_bridge,
-            parent=content,
-        )
-        thread.completed.connect(relay.completed)
-        thread.failed.connect(relay.failed)
-        thread.finished.connect(relay.finished)
-        try:
-            started = thread.start()
-        except Exception:
-            bridge_threads.remove(thread)
-            relay.deleteLater()
-            set_pdf_generation_busy(False)
-            QMessageBox.warning(
-                content,
-                "启动 PDF 生成失败",
-                "未能启动 PDF 生成任务，请稍后重试。",
-            )
-            return
-        if not started:
-            bridge_threads.remove(thread)
-            relay.deleteLater()
-            set_pdf_generation_busy(True)
-            with _CHATGPT_BRIDGE_LOCK:
-                active_threads = list(_CHATGPT_BRIDGE_WORKERS)
-            if active_threads:
-                watch_global_pdf_worker(active_threads[0])
-            QMessageBox.information(
-                content,
-                "正在生成 PDF",
-                "已有一个 ChatGPT PDF 生成任务正在运行。你可以点击“停止 PDF 生成”后再启动新的任务。",
-            )
-
-    def send_practice_prompt_to_chatgpt(line: str):
+    def send_practice_prompt_to_chatgpt(self, line: str):
         if is_oj_plan_homework(line):
             from PySide6.QtWidgets import QMessageBox
 
             QMessageBox.information(
-                content,
+                self.page.content,
                 "无需生成 PDF",
                 "算法设计与 OJ 训练使用 LeetCode 官方原题和官方测试集；系统已在计划中直接匹配题目，不再生成出题提示词。",
             )
             return
-        prompt = build_practice_generation_prompt(line, state, subject_scope.currentData() or None)
-        start_chatgpt_pdf_prompt(prompt)
+        prompt = build_practice_generation_prompt(line, self.page.state, self.page.subject_scope.currentData() or None)
+        self.pdf_session.start(prompt)
 
-    def generate_local_practice_pdf(line: str):
+    def generate_local_practice_pdf(self, line: str):
         from PySide6.QtWidgets import QMessageBox
 
-        subject_name = str(subject_scope.currentData() or "").strip()
+        subject_name = str(self.page.subject_scope.currentData() or "").strip()
         try:
             result = generate_local_practice_for_plan_line(line, subject_name)
         except Exception as error:
             message = str(error).strip() or "本地练习卷生成失败，请检查题库答案和运行依赖。"
-            QMessageBox.warning(content, "本地练习卷生成失败", message)
+            QMessageBox.warning(self.page.content, "本地练习卷生成失败", message)
             return
-        QMessageBox.information(content, "本地练习卷已生成", local_practice_success_message(result))
+        QMessageBox.information(self.page.content, "本地练习卷已生成", local_practice_success_message(result))
 
-    stop_pdf_button.clicked.connect(stop_pdf_generation)
-
-    def copy_plan_practice_context():
+    def copy_plan_practice_context(self):
         from PySide6.QtWidgets import QApplication, QMessageBox
 
-        saved = get_active_study_plan(subject_scope.currentData() or None)
+        saved = get_active_study_plan(self.page.subject_scope.currentData() or None)
         if not saved:
-            QMessageBox.information(content, "暂无计划", "请先生成今日计划，再复制题库上下文。")
+            QMessageBox.information(self.page.content, "暂无计划", "请先生成今日计划，再复制题库上下文。")
             return
         homework_items = [
             item["item_text"]
@@ -1463,91 +1723,156 @@ def study_plan_page(state: DashboardState):
             if item.get("section_key") == "short" and item.get("item_type") == "result"
         ]
         if not homework_items:
-            QMessageBox.information(content, "暂无作业", "当前计划中还没有可导出的每日作业。")
+            QMessageBox.information(self.page.content, "暂无作业", "当前计划中还没有可导出的每日作业。")
             return
         exports = []
         for item in homework_items:
             if is_oj_plan_homework(item):
-                exports.append(build_oj_practice_list(item, state, subject_scope.currentData() or None))
+                exports.append(build_oj_practice_list(item, self.page.state, self.page.subject_scope.currentData() or None))
             else:
-                exports.append(build_practice_generation_prompt(item, state, subject_scope.currentData() or None))
+                exports.append(build_practice_generation_prompt(item, self.page.state, self.page.subject_scope.currentData() or None))
         QApplication.clipboard().setText("\n\n---\n\n".join(exports))
-        QMessageBox.information(content, "已复制", f"已复制 {len(exports)} 条练习上下文。OJ 作业会直接复制 LeetCode 原题清单。")
+        QMessageBox.information(self.page.content, "已复制", f"已复制 {len(exports)} 条练习上下文。OJ 作业会直接复制 LeetCode 原题清单。")
 
-    def send_mock_exam_pdf():
+    def send_mock_exam_pdf(self):
         from PySide6.QtWidgets import QMessageBox
 
-        subject_name = subject_scope.currentData() or None
+        subject_name = self.page.subject_scope.currentData() or None
         if not subject_name:
-            QMessageBox.information(content, "请选择学科", "生成模拟卷前，请先在计划范围中选择一个具体学科。")
+            QMessageBox.information(self.page.content, "请选择学科", "生成模拟卷前，请先在计划范围中选择一个具体学科。")
             return
         try:
-            prompt = build_mock_exam_generation_prompt(state, subject_name, str(mock_exam_mode.currentData() or "diagnostic"))
+            prompt = build_mock_exam_generation_prompt(
+                self.page.state, subject_name,
+                str(self.mock_exam_mode.currentData() or "diagnostic"),
+            )
         except Exception as error:
-            QMessageBox.warning(content, "模拟卷提示词生成失败", str(error))
+            QMessageBox.warning(self.page.content, "模拟卷提示词生成失败", str(error))
             return
-        start_chatgpt_pdf_prompt(prompt)
+        self.pdf_session.start(prompt)
 
-    def maybe_show_completed_day_feedback():
+    def maybe_show_completed_day_feedback(self):
         from PySide6.QtWidgets import QMessageBox
-
-        saved = get_active_study_plan(subject_scope.currentData() or None)
+        saved = get_active_study_plan(self.page.subject_scope.currentData() or None)
         if not saved:
             return
-        shown_key = "study_plan_day_feedback_shown"
-        shown = set(get_setting(shown_key, []) or [])
-        new_shown = set(shown)
-        for feedback in plan_day_feedback_details(saved, state, subject_scope.currentData() or None):
-            marker = f"{saved['id']}:{feedback['day_index']}"
-            if not feedback["complete"] or marker in shown:
-                continue
-            QMessageBox.information(content, "当天计划已完成", feedback["popup"])
-            new_shown.add(marker)
-        if new_shown != shown:
-            set_setting(shown_key, sorted(new_shown))
+        feedback = _completed_day_feedback(saved, self.page.state, self.page.subject_scope.currentData() or None)
+        for message in feedback.messages:
+            QMessageBox.information(self.page.content, "当天计划已完成", message)
+        _save_completed_day_feedback_markers(feedback)
 
-    generate_handler = lambda _checked=False: render_plan(force_regenerate=True)
-    clear_handler = lambda _checked=False: clear_plan()
-    generate_button.clicked.connect(generate_handler)
-    final_review_button.clicked.connect(lambda _checked=False: manage_final_review_modes())
-    clear_button.clicked.connect(clear_handler)
-    copy_context_button.clicked.connect(lambda _checked=False: copy_plan_practice_context())
-    mock_exam_button.clicked.connect(lambda _checked=False: send_mock_exam_pdf())
-    def refresh_scope_views(_index=None):
-        invalidate_preview()
-        render_saved_plan(get_active_study_plan(subject_scope.currentData() or None), reload_state=False)
-        render_budgeted_plan()
 
-    subject_scope.currentIndexChanged.connect(refresh_scope_views)
-    refresh_phase_status()
-    render_saved_plan(get_active_study_plan(subject_scope.currentData() or None), reload_state=False)
-    render_budgeted_plan()
-    content._plan_callbacks = (render_plan, render_saved_plan, clear_plan, clear_layout, generate_handler, clear_handler)
-    content._budget_plan_callbacks = (generate_budgeted_plan, render_budgeted_plan)
-    def update_dashboard_state(new_state: DashboardState):
-        nonlocal state
-        state = new_state
+class _StudyPlanPage:
+    """组合两个面板，共享当前仪表盘状态和学科选择。"""
 
-    scroll._set_dashboard_state = update_dashboard_state
-    from study_app.ui.design_components import disclosure, readable_page
-    for widget in (phase_status, progress_label, progress_bar, plan_host):
-        layout.removeWidget(widget)
-        tools_layout.addWidget(widget)
-    tools_group = disclosure("详细学习方案与出卷工具", tools_body)
-    layout.insertWidget(layout.count()-1, tools_group)
-    readable_page(scroll, content)
+    def __init__(self, state: DashboardState):
+        from PySide6.QtWidgets import QApplication, QScrollArea, QSizePolicy, QVBoxLayout, QWidget
+        from PySide6.QtCore import Qt
+        self.state = state
+        self.WorkerSignalRelay, self.PlanGenerationThread, self.ChatGPTBridgeThread = _worker_types()
+        self.scroll = QScrollArea()
+        self.scroll.setWidgetResizable(True)
+        self.scroll.setFrameShape(QScrollArea.Shape.NoFrame)
+        self.scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.content = QWidget()
+        self.content.setMinimumWidth(0)
+        self.content.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+        self.content._chatgpt_bridge_page_alive = True
+        self.content.destroyed.connect(self.mark_chatgpt_page_destroyed)
+        app = QApplication.instance()
+        if app is not None and not getattr(app, "_chatgpt_bridge_shutdown_connected", False):
+            app.aboutToQuit.connect(_shutdown_chatgpt_bridge_workers)
+            app._chatgpt_bridge_shutdown_connected = True
+        self.layout = QVBoxLayout(self.content)
+        self.layout.setContentsMargins(30, 28, 30, 30)
+        self.layout.setSpacing(18)
+        self._build_header()
 
-    def open_task(item_id=None):
-        render_budgeted_plan()
-        if item_id in task_rows:
-            task, details = task_rows[item_id]
+        self.budget = _BudgetPlanPanel(self)
+        self.layout.addWidget(self.budget.widget)
+        self.detail = _DetailedPlanPanel(self)
+
+        generate_handler = lambda _checked=False: self.detail.render_plan(force_regenerate=True)
+        clear_handler = lambda _checked=False: self.detail.clear_plan()
+        self.detail.generate_button.clicked.connect(generate_handler)
+        self.detail.final_review_button.clicked.connect(lambda _checked=False: self.detail.manage_final_review_modes())
+        self.detail.clear_button.clicked.connect(clear_handler)
+        self.detail.copy_context_button.clicked.connect(lambda _checked=False: self.detail.copy_plan_practice_context())
+        self.detail.mock_exam_button.clicked.connect(lambda _checked=False: self.detail.send_mock_exam_pdf())
+        self.subject_scope.currentIndexChanged.connect(self.refresh_scope_views)
+        self.detail.refresh_phase_status()
+        self.detail.render_saved_plan(get_active_study_plan(self.subject_scope.currentData() or None), reload_state=False)
+        self.budget.render_budgeted_plan()
+        self.content._plan_callbacks = (
+            self.detail.render_plan, self.detail.render_saved_plan,
+            self.detail.clear_plan, self.detail.clear_layout,
+            generate_handler, clear_handler,
+        )
+        self.content._budget_plan_callbacks = (self.budget.generate_budgeted_plan, self.budget.render_budgeted_plan)
+        self.scroll._set_dashboard_state = self.update_dashboard_state
+        from study_app.ui.design_components import disclosure, readable_page
+        self.layout.addWidget(disclosure("详细学习方案与出卷工具", self.detail.widget))
+        self.layout.addStretch()
+        readable_page(self.scroll, self.content)
+        self.scroll._open_task = self.open_task
+        self.scroll.setWidget(self.content)
+
+    def _build_header(self):
+        from PySide6.QtWidgets import QComboBox, QHBoxLayout, QLabel, QSizePolicy, QVBoxLayout, QWidget
+
+        hero = QWidget()
+        hero.setObjectName("RecordHero")
+        hero_layout = QVBoxLayout(hero)
+        hero_layout.setContentsMargins(18, 16, 18, 16)
+        hero_layout.setSpacing(6)
+        title = QLabel("学习计划")
+        title.setObjectName("HeroTitle")
+        hero_layout.addWidget(title)
+        self.layout.addWidget(hero)
+
+        scope_label = QLabel("计划范围")
+        scope_label.setObjectName("FormLabel")
+        self.subject_scope = QComboBox()
+        for label, value in plan_subject_scope_options(self.state):
+            self.subject_scope.addItem(label, value)
+        self.subject_scope.setSizePolicy(
+            QSizePolicy.Policy.Expanding,
+            QSizePolicy.Policy.Fixed,
+        )
+        scope_row = QHBoxLayout()
+        scope_label.setBuddy(self.subject_scope)
+        scope_row.addWidget(scope_label)
+        scope_row.addWidget(self.subject_scope, 1)
+        self.layout.addLayout(scope_row)
+
+    def mark_chatgpt_page_destroyed(self):
+        setattr(self.content, "_chatgpt_bridge_page_alive", False)
+
+    def refresh_scope_views(self, _index=None):
+        self.budget.invalidate_preview()
+        self.detail.render_saved_plan(get_active_study_plan(self.subject_scope.currentData() or None), reload_state=False)
+        self.budget.render_budgeted_plan()
+
+    def update_dashboard_state(self, new_state: DashboardState):
+        self.state = new_state
+
+    def open_task(self, item_id=None):
+        from PySide6.QtCore import QTimer
+        self.budget.render_budgeted_plan()
+        if item_id in self.budget.task_rows:
+            task, details = self.budget.task_rows[item_id]
             details.toggle.setChecked(True)
-            QTimer.singleShot(0, lambda: scroll.ensureWidgetVisible(task, 0, 24))
+            QTimer.singleShot(0, lambda: self.scroll.ensureWidgetVisible(task, 0, 24))
         else:
-            scroll.verticalScrollBar().setValue(0)
-    scroll._open_task = open_task
-    scroll.setWidget(content)
-    return scroll
+            self.scroll.verticalScrollBar().setValue(0)
+
+
+def study_plan_page(state: DashboardState):
+    page = _StudyPlanPage(state)
+    # 页面重建时，每个滚动容器保留自己的状态和回调实例。
+    page.scroll._plan_page = page
+    return page.scroll
+
 
 def plan_day_feedback_card(saved_plan: dict, state: DashboardState, subject_scope: str | None):
     from PySide6.QtWidgets import QLabel, QVBoxLayout, QWidget

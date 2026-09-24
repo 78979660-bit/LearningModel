@@ -98,7 +98,7 @@ def current_input_version_vector(
     manifest_version: str | None = None,
 ) -> dict:
     repository = SubjectCatalogRepository(db_path)
-    with repository._open() as connection:
+    with repository.transaction() as connection:
         revision = int(
             connection.execute(
                 "SELECT catalog_revision FROM subject_catalog_state WHERE singleton=1"
@@ -143,7 +143,7 @@ def store_manifest_version(
     payload_json = canonical_json(payload)
     payload_hash = hashlib.sha256(payload_json.encode("utf-8")).hexdigest()
     repository = SubjectCatalogRepository(db_path)
-    with repository._open(readonly=False) as connection:
+    with repository.transaction(readonly=False) as connection:
         existing = connection.execute(
             "SELECT payload_hash FROM subject_manifest_versions WHERE manifest_version=?",
             (manifest_version,),
@@ -206,7 +206,7 @@ def prepare_changeset(
     if expected_revision < 0:
         raise ValueError("input_version_vector 缺少 catalog_revision")
     repository = SubjectCatalogRepository(db_path)
-    with repository._open(readonly=False) as connection:
+    with repository.transaction(readonly=False) as connection:
         connection.execute("BEGIN IMMEDIATE")
         existing_operation = connection.execute(
             "SELECT * FROM subject_change_operations WHERE operation_id=?", (operation,)
@@ -298,7 +298,7 @@ def approve_changeset(
     if not isinstance(approver, str) or not approver.strip():
         raise ValueError("approver 必须是非空字符串")
     repository = SubjectCatalogRepository(db_path)
-    with repository._open(readonly=False) as connection:
+    with repository.transaction(readonly=False) as connection:
         op_row = connection.execute(
             "SELECT * FROM subject_change_operations WHERE operation_id=?", (operation,)
         ).fetchone()
@@ -354,7 +354,7 @@ def approve_changeset(
 
 def load_changeset(db_path: Path | str, operation_id: str) -> PreparedChangeSet:
     repository = SubjectCatalogRepository(db_path)
-    with repository._open() as connection:
+    with repository.transaction() as connection:
         op_row = connection.execute(
             "SELECT * FROM subject_change_operations WHERE operation_id=?", (operation_id,)
         ).fetchone()
@@ -380,7 +380,7 @@ def preflight_changeset(
     if stale:
         issues.append("input_version_vector_drift")
     repository = SubjectCatalogRepository(db_path)
-    with repository._open() as connection:
+    with repository.transaction() as connection:
         approval = connection.execute(
             "SELECT * FROM subject_approvals WHERE operation_id=?", (operation_id,)
         ).fetchone()

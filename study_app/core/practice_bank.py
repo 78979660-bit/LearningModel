@@ -558,9 +558,9 @@ def template_for_topic(topic: str, subject: str | None = None) -> tuple[str, str
         "PHYS-REL-DYNAMICS": "相对论能量、动量、质能关系与高速近似",
         "PHYS-REL-DECAY": "相对论粒子衰变、能动量守恒和二维运动学",
         "PHYS-THERMO-ENTROPY": "热过程、相变、熵变、熵增原理与自发性判断",
-        "PHYS-TEMP-EOS": "\u6e29\u5ea6\u3001\u6c14\u4f53\u72b6\u6001\u65b9\u7a0b\u3001\u70ed\u81a8\u80c0\u7cfb\u6570\u4e0e\u7b49\u6e29\u538b\u7f29\u7cfb\u6570",
-        "PHYS-FIRST-LAW": "\u70ed\u91cf\u3001\u529f\u3001\u5185\u80fd\u3001\u70ed\u529b\u5b66\u7b2c\u4e00\u5b9a\u5f8b\u4e0e\u7406\u60f3\u6c14\u4f53\u8fc7\u7a0b",
-        "PHYS-SECOND-LAW-ENGINE": "\u70ed\u529b\u5b66\u7b2c\u4e8c\u5b9a\u5f8b\u3001Carnot \u5b9a\u7406\u3001\u70ed\u673a/\u5236\u51b7\u673a\u548c\u71b5\u5224\u636e",
+        "PHYS-TEMP-EOS": "温度、气体状态方程、热膨胀系数与等温压缩系数",
+        "PHYS-FIRST-LAW": "热量、功、内能、热力学第一定律与理想气体过程",
+        "PHYS-SECOND-LAW-ENGINE": "热力学第二定律、Carnot 定理、热机/制冷机和熵判据",
         "PHYS-THERMO-PROCESS": "理想/非理想气体过程、状态方程、功热与响应系数",
         "PHYS-THERMO-POTENTIAL": "热力学势、Maxwell 关系、TdS 方程与偏导恒等式",
         "PHYS-PHASE-TRANSITION": "相图、Clapeyron 方程、一级/二级相变与潜热",
@@ -584,40 +584,40 @@ def template_for_topic(topic: str, subject: str | None = None) -> tuple[str, str
     if subject_filter in {"", "大学物理学"} or any(
         keyword in topic
         for keyword in [
-            "\u70ed\u529b\u5b66",
-            "\u72b6\u6001\u65b9\u7a0b",
-            "\u6e29\u5ea6",
-            "\u76f8\u53d8",
+            "热力学",
+            "状态方程",
+            "温度",
+            "相变",
             "Clapeyron",
             "Maxwell",
-            "\u7edf\u8ba1\u5206\u5e03",
-            "\u6c14\u4f53\u52a8\u7406\u8bba",
+            "统计分布",
+            "气体动理论",
         ]
     ):
         physics_routes = (
             (
                 "PHYS-PHASE-TRANSITION",
-                ("Clapeyron", "\u76f8\u56fe", "\u76f8\u5e73\u8861", "\u5316\u5b66\u52bf", "\u76f8\u53d8", "\u6f5c\u70ed", "\u4e09\u76f8\u70b9"),
+                ("Clapeyron", "相图", "相平衡", "化学势", "相变", "潜热", "三相点"),
             ),
             (
                 "PHYS-STATISTICAL",
-                ("Boltzmann", "Maxwell \u5206\u5e03", "\u901f\u7387\u5206\u5e03", "\u6c14\u4f53\u52a8\u7406\u8bba", "\u5fae\u89c2", "\u5747\u65b9\u6839", "\u6700\u6982\u7136"),
+                ("Boltzmann", "Maxwell 分布", "速率分布", "气体动理论", "微观", "均方根", "最概然"),
             ),
             (
                 "PHYS-THERMO-POTENTIAL",
-                ("Maxwell", "TdS", "Gibbs", "Helmholtz", "\u81ea\u7531\u80fd", "\u70ed\u529b\u5b66\u52bf", "\u504f\u5bfc", "\u5316\u5b66\u52bf"),
+                ("Maxwell", "TdS", "Gibbs", "Helmholtz", "自由能", "热力学势", "偏导", "化学势"),
             ),
             (
                 "PHYS-SECOND-LAW-ENGINE",
-                ("Carnot", "\u70ed\u673a", "\u5236\u51b7\u673a", "COP", "\u7b2c\u4e8c\u5b9a\u5f8b", "Clausius", "\u71b5\u589e", "\u6700\u5927\u529f"),
+                ("Carnot", "热机", "制冷机", "COP", "第二定律", "Clausius", "熵增", "最大功"),
             ),
             (
                 "PHYS-FIRST-LAW",
-                ("\u7b2c\u4e00\u5b9a\u5f8b", "\u70ed\u91cf", "\u5185\u80fd", "\u7edd\u70ed", "\u7b49\u6e29", "\u7b49\u538b", "\u7b49\u5bb9", "\u70ed\u5bb9", "p-V", "\u5faa\u73af"),
+                ("第一定律", "热量", "内能", "绝热", "等温", "等压", "等容", "热容", "p-V", "循环"),
             ),
             (
                 "PHYS-TEMP-EOS",
-                ("\u6e29\u5ea6", "\u6e29\u6807", "\u72b6\u6001\u65b9\u7a0b", "\u7406\u60f3\u6c14\u4f53", "\u538b\u7f29\u7cfb\u6570", "\u81a8\u80c0\u7cfb\u6570", "van der Waals", "Boyle"),
+                ("温度", "温标", "状态方程", "理想气体", "压缩系数", "膨胀系数", "van der Waals", "Boyle"),
             ),
         )
         for template_id, keywords in physics_routes:
@@ -695,30 +695,30 @@ def template_for_topic(topic: str, subject: str | None = None) -> tuple[str, str
         return "ALG-KMP-PREFIX", "前缀函数/next 数组手算、失配跳转、字符串匹配适用性判断"
     if "复杂度" in topic:
         return "ALG-COMPLEXITY", "循环/递归复杂度、最好最坏平均情形、递归树或主定理"
-    high_math_like = subject_filter in {"", "\u9ad8\u7b49\u6570\u5b66", "\u5fae\u79ef\u5206"} or any(
+    high_math_like = subject_filter in {"", "高等数学", "微积分"} or any(
         keyword in topic
         for keyword in [
             "Gauss",
             "Green",
             "Stokes",
-            "\u4e09\u91cd\u79ef\u5206",
-            "\u4e8c\u91cd\u79ef\u5206",
-            "\u66f2\u7ebf\u79ef\u5206",
-            "\u66f2\u9762\u79ef\u5206",
-            "\u591a\u5143\u51fd\u6570\u79ef\u5206",
+            "三重积分",
+            "二重积分",
+            "曲线积分",
+            "曲面积分",
+            "多元函数积分",
         ]
     )
-    if high_math_like and any(keyword in topic for keyword in ["Stokes", "\u65cb\u5ea6", "\u66f2\u9762\u9009\u62e9"]):
+    if high_math_like and any(keyword in topic for keyword in ["Stokes", "旋度", "曲面选择"]):
         return "MIX-CALC-STOKES-CURL", (
-            "Stokes\u516c\u5f0f\u3001\u65cb\u5ea6\u8ba1\u7b97\u3001\u65b9\u5411\u5224\u65ad\u4e0e\u66f2\u9762\u9009\u62e9"
+            "Stokes公式、旋度计算、方向判断与曲面选择"
         )
-    if high_math_like and any(keyword in topic for keyword in ["Gauss", "\u901a\u91cf", "\u8865\u9762", "\u7b2c\u4e8c\u578b\u66f2\u9762\u79ef\u5206"]):
+    if high_math_like and any(keyword in topic for keyword in ["Gauss", "通量", "补面", "第二型曲面积分"]):
         return "CALC-GAUSS-FLUX", (
-            "\u7b2c\u4e8c\u578b\u66f2\u9762\u79ef\u5206\u3001\u8865\u9762\u3001\u65b9\u5411\u5224\u65ad\u4e0e\u5947\u70b9/\u96f6\u70b9\u8ba8\u8bba"
+            "第二型曲面积分、补面、方向判断与奇点/零点讨论"
         )
-    if high_math_like and any(keyword in topic for keyword in ["\u4e09\u91cd\u79ef\u5206", "Jacobian", "\u5750\u6807\u53d8\u6362"]):
+    if high_math_like and any(keyword in topic for keyword in ["三重积分", "Jacobian", "坐标变换"]):
         return "CALC-TRIPLE-INTEGRAL", (
-            "\u4e09\u91cd\u79ef\u5206\u533a\u57df\u8bbe\u9650\u3001\u5750\u6807\u9009\u62e9\u3001\u6362\u5143\u4e0e Jacobian"
+            "三重积分区域设限、坐标选择、换元与 Jacobian"
         )
     if subject_filter in {"", "高等数学", "微积分"} and any(keyword in topic for keyword in ["Gauss", "曲面积分"]):
         return "CALC-GAUSS-FLUX", "第二型曲面积分、补面、方向判断、奇点/零点特殊情况讨论"

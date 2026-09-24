@@ -8,6 +8,7 @@
 - 缺失字段保持缺失语义；difficulty_score=0 保留。
 """
 import math
+from types import SimpleNamespace
 
 import pytest
 
@@ -124,7 +125,12 @@ class TestRejectionChain:
         monkeypatch.setattr(
             record_parser_module,
             "parse_record_with_llm",
-            lambda payload: {"problems": [{"title": "T", "correctness": float("nan")}]},
+            lambda payload, *, settings: {"problems": [{"title": "T", "correctness": float("nan")}]},
+        )
+        monkeypatch.setattr(
+            record_parser_module,
+            "load_llm_settings",
+            lambda: SimpleNamespace(enabled_features=("record_parser",)),
         )
         monkeypatch.setattr(database_module, "add_learning_record", _record_write)
         monkeypatch.setattr(sync_module, "sync_learning_record_to_model", _model_sync)

@@ -55,6 +55,12 @@ def test_request_and_parse_failures_are_distinct(monkeypatch):
 def test_record_business_validation_failure_is_not_success(monkeypatch):
     audit, rows, transitions = _install_audit_store(monkeypatch)
     monkeypatch.setattr(audit, "chat_completion_json", lambda *_args, **_kwargs: '{"problems":[]}')
+    monkeypatch.setattr(
+        "study_app.ai.record_parser.load_llm_settings",
+        lambda: SimpleNamespace(
+            enabled_features=("record_parser",), provider="mock", model="mock-model"
+        ),
+    )
 
     from study_app.ai.record_parser import parse_record_payload_with_llm
 

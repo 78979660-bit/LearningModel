@@ -5,6 +5,7 @@ from typing import Any
 import math
 
 from study_app.ai.llm_client import parse_record_with_llm
+from study_app.ai.providers import LLM_FEATURES, load_llm_settings
 from study_app.ai.audit import (
     mark_audit_adopted,
     mark_audit_validated,
@@ -24,6 +25,13 @@ ERROR_CATEGORIES = {
     "none",
 }
 
+FEATURE_OUTPUT_FIELDS = {
+    "error_classifier": ("error_category",),
+    "knowledge_mapping": ("related_topics",),
+    "difficulty_calibration": ("difficulty_score", "difficulty"),
+}
+
+
 def _finite_or_none(value: Any, label: str) -> float | None:
     """Return a finite float or None when missing; reject bool/NaN/inf (data_contract_v1 §4.2)."""
     if value is None:
@@ -36,28 +44,38 @@ def _finite_or_none(value: Any, label: str) -> float | None:
     return number
 
 
-def normalize_llm_problem(problem: dict[str, Any]) -> dict[str, Any]:
+def normalize_llm_problem(
+    problem: dict[str, Any], enabled_features: frozenset[str] | None = None
+) -> dict[str, Any]:
+    features = frozenset(LLM_FEATURES) if enabled_features is None else enabled_features
     correctness = _finite_or_none(problem.get("correctness"), "correctness")
     if correctness is not None:
         correctness = max(0.0, min(1.0, correctness))
 
-    difficulty_score = _finite_or_none(problem.get("difficulty_score"), "difficulty_score")
+    difficulty_score = (
+        _finite_or_none(problem.get("difficulty_score"), "difficulty_score")
+        if "difficulty_calibration" in features else None
+    )
     if difficulty_score is not None:
         difficulty_score = max(0.0, min(100.0, difficulty_score))
-
-    error_category = problem.get("error_category") or "none"
-    if error_category not in ERROR_CATEGORIES:
-        error_category = "none"
 
     item = {
         "title": str(problem.get("title") or "LLM识别题目"),
         "statement": str(problem.get("statement") or ""),
         "statement_source": problem.get("statement_source") or "llm_text",
         "error_cause": str(problem.get("error_cause") or ""),
-        "error_category": error_category,
-        "related_topics": problem.get("related_topics") if isinstance(problem.get("related_topics"), list) else [],
         "parser_source": "llm",
     }
+    if "error_classifier" in features:
+        error_category = problem.get("error_category") or "none"
+        item["error_category"] = (
+            error_category if error_category in ERROR_CATEGORIES else "none"
+        )
+    if "knowledge_mapping" in features:
+        item["related_topics"] = (
+            problem.get("related_topics")
+            if isinstance(problem.get("related_topics"), list) else []
+        )
     if correctness is not None:
         item["partial_credit"] = correctness
         item["correctness"] = correctness * 100
@@ -87,12 +105,30 @@ def difficulty_label(score: float) -> str:
 
 
 def parse_record_payload_with_llm(payload: dict[str, Any]) -> list[dict[str, Any]]:
-    result = parse_record_with_llm(payload)
+    settings = load_llm_settings()
+    features = frozenset(settings.enabled_features)
+    result = parse_record_with_llm(payload, settings=settings)
     try:
-        validate_record_parser_output(result)
+        selected = result
+        if isinstance(result, dict) and isinstance(result.get("problems"), list):
+            ignored_fields = {
+                field
+                for feature, fields in FEATURE_OUTPUT_FIELDS.items()
+                if feature not in features
+                for field in fields
+            }
+            selected = {
+                **result,
+                "problems": [
+                    {key: value for key, value in problem.items() if key not in ignored_fields}
+                    if isinstance(problem, dict) else problem
+                    for problem in result["problems"]
+                ],
+            }
+        validate_record_parser_output(selected)
         problems = [
-            normalize_llm_problem(problem)
-            for problem in result.get("problems", [])
+            normalize_llm_problem(problem, features)
+            for problem in selected.get("problems", [])
             if isinstance(problem, dict)
         ]
     except Exception as error:

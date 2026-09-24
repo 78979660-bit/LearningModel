@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from datetime import date
 
 from study_app.core.active_subjects import (
@@ -12,6 +13,8 @@ from study_app.core.dashboard import DashboardState
 from study_app.core.practice_bank import first_diagnostic_difficulty_cap, generate_practice_assignment
 from study_app.core.study_plan_homework import _daily_plan, _lowest_cs_oj_focus, _matches_plan_subject
 
+LOGGER = logging.getLogger(__name__)
+
 def _balanced_homework_topic(
     subject: str,
     current_line: str,
@@ -23,6 +26,7 @@ def _balanced_homework_topic(
     try:
         from study_app.core.study_phase import is_final_review, weighted_topic_priority_states
     except Exception:
+        LOGGER.exception("Final-review topic balancing is unavailable for %s", subject)
         return None
     if not is_final_review(subject):
         return None
@@ -45,6 +49,7 @@ def _balanced_homework_topic(
             as_of_date=as_of_date,
         )
     except Exception:
+        LOGGER.exception("Weighted topic priorities could not be read for %s", subject)
         return None
     if not states:
         return None
@@ -509,20 +514,30 @@ def generate_study_plan(state: DashboardState, subject_name: str | None = None) 
         ]
     if covered_lines:
         judgement.append("已学范围口径：" + "；".join(covered_lines[:4]) + "。")
+    model_warning = ""
     if subject_name:
         try:
+            from study_app.core.study_phase import load_learning_model
+
             subject_model = next(
-                item for item in load_learning_model().get("subjects", [])
-                if item.get("name") == subject_name
+                (
+                    item for item in load_learning_model().get("subjects", [])
+                    if item.get("name") == subject_name
+                ),
+                None,
             )
             module_lines = [
                 f"{module.get('name')} {float(module.get('mastery', 0)):.0%}"
-                for module in subject_model.get("modules", [])
+                for module in (subject_model or {}).get("modules", [])
             ]
             if module_lines:
                 judgement.append("主模块掌握度：" + "；".join(module_lines) + "。")
+        except FileNotFoundError:
+            model_warning = "学科模型文件不存在，主模块掌握度暂不可用。"
+            LOGGER.info("Subject model file is absent for %s", subject_name)
         except Exception:
-            pass
+            model_warning = "学科模型读取失败，主模块掌握度暂不可用。"
+            LOGGER.exception("Subject model details could not be read for %s", subject_name)
     if memory_risks:
         top = memory_risks[0]
         judgement.append(
@@ -623,6 +638,8 @@ def generate_study_plan(state: DashboardState, subject_name: str | None = None) 
         "掌握度口径：计划优先使用已学范围掌握度，整门课总掌握度仅作背景。",
         "BKT证据口径：题目级匹配已启用同义词、记录级兜底和重复证据去重。",
     ]
+    if model_warning:
+        evidence.append(model_warning)
     if subject_name:
         weights = phase_policy.get("priority_weights", {})
         evidence.append(

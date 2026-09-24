@@ -7,7 +7,7 @@ from study_app.paths import DATABASE_PATH, MODEL_PATH, RECORDS_PATH
 
 from learning_difficulty import infer_problem_difficulty
 from learning_bkt import bkt_topic_states
-from learning_memory import topic_memory_state
+from learning_memory import is_outside_class_review, topic_memory_state
 from learning_problem_result import interpret_problem_result
 
 
@@ -77,38 +77,6 @@ def records_through(records, as_of_date):
         if record_date is not None and record_date <= cutoff:
             matched.append(record)
     return matched
-
-
-def is_outside_class_review(record):
-    activity = record.get("activity") or record.get("activity_type") or ""
-    source = record.get("source") or ""
-    tags = record.get("tags") or []
-    if isinstance(tags, str):
-        tags = [tags]
-
-    review_activities = {
-        "review",
-        "exercise",
-        "quiz",
-        "exam_review",
-        "self_test",
-        "错题",
-        "复习",
-        "练习",
-    }
-    classroom_activities = {"class", "lecture", "课堂", "听课"}
-
-    if source in {"outside_class", "self_study", "课外"}:
-        return True
-    if source in {"classroom", "class", "课堂"}:
-        return False
-    if activity in classroom_activities:
-        return False
-    if activity in review_activities:
-        return True
-    if any(tag in {"outside_class", "self_study", "课外复习", "复习", "练习"} for tag in tags):
-        return True
-    return False
 
 
 def records_in_window(records, subject_name, start, end):

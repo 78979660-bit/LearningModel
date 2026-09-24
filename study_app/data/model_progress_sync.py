@@ -198,65 +198,65 @@ TOPIC_ALIASES = {
 }
 
 MODULE_ALIASES = {
-    "\u7b2c9\u7ae0\uff1a\u72ed\u4e49\u76f8\u5bf9\u8bba": (
-        "\u7b2c9\u7ae0",
-        "\u7b2c\u4e5d\u7ae0",
-        "\u72ed\u4e49\u76f8\u5bf9\u8bba",
-        "\u76f8\u5bf9\u8bba\u4e13\u9879",
-        "\u76f8\u5bf9\u8bba\u7efc\u5408\u8bad\u7ec3",
+    "第9章：狭义相对论": (
+        "第9章",
+        "第九章",
+        "狭义相对论",
+        "相对论专项",
+        "相对论综合训练",
     ),
 }
 
 TOPIC_ALIASES.update(
     {
-        "\u76f8\u5bf9\u6027\u539f\u7406\u4e0e\u5149\u901f\u4e0d\u53d8": (
-            "\u76f8\u5bf9\u6027\u539f\u7406",
-            "\u5149\u901f\u4e0d\u53d8",
-            "\u60ef\u6027\u7cfb",
-            "\u65f6\u7a7a\u95f4\u9694",
-            "\u7c7b\u65f6",
-            "\u7c7b\u7a7a",
-            "\u7c7b\u5149",
-            "\u53cc\u4e8b\u4ef6",
-            "\u540c\u65f6\u6027",
+        "相对性原理与光速不变": (
+            "相对性原理",
+            "光速不变",
+            "惯性系",
+            "时空间隔",
+            "类时",
+            "类空",
+            "类光",
+            "双事件",
+            "同时性",
         ),
-        "Lorentz \u53d8\u6362": (
+        "Lorentz 变换": (
             "Lorentz",
-            "\u6d1b\u4f26\u5179\u53d8\u6362",
-            "Lorentz\u53d8\u6362",
-            "\u6d1b\u4f26\u5179",
-            "\u5750\u6807\u53d8\u6362",
-            "\u540c\u65f6\u6027",
-            "\u56db\u52a8\u91cfLorentz\u53d8\u6362",
+            "洛伦兹变换",
+            "Lorentz变换",
+            "洛伦兹",
+            "坐标变换",
+            "同时性",
+            "四动量Lorentz变换",
         ),
-        "\u65f6\u95f4\u81a8\u80c0\u4e0e\u957f\u5ea6\u6536\u7f29": (
-            "\u65f6\u95f4\u81a8\u80c0",
-            "\u957f\u5ea6\u6536\u7f29",
-            "\u56fa\u6709\u65f6\u95f4",
-            "\u56fa\u6709\u957f\u5ea6",
-            "\u5bff\u547d",
-            "\u659c\u653e\u6746",
-            "\u975e\u5e73\u884c\u957f\u5ea6\u6536\u7f29",
+        "时间膨胀与长度收缩": (
+            "时间膨胀",
+            "长度收缩",
+            "固有时间",
+            "固有长度",
+            "寿命",
+            "斜放杆",
+            "非平行长度收缩",
         ),
-        "\u76f8\u5bf9\u8bba\u52a8\u529b\u5b66\u57fa\u7840": (
-            "\u76f8\u5bf9\u8bba\u52a8\u529b\u5b66",
-            "\u901f\u5ea6\u53d8\u6362",
-            "\u76f8\u5bf9\u8bba\u901f\u5ea6\u53d8\u6362",
+        "相对论动力学基础": (
+            "相对论动力学",
+            "速度变换",
+            "相对论速度变换",
             "Doppler",
-            "\u591a\u666e\u52d2",
-            "\u7ea2\u79fb",
-            "\u84dd\u79fb",
-            "\u603b\u80fd\u91cf",
-            "\u52a8\u80fd",
-            "\u76f8\u5bf9\u8bba\u52a8\u91cf",
-            "\u80fd\u91cf-\u52a8\u91cf\u5173\u7cfb",
-            "\u56db\u52a8\u91cf",
-            "\u56db\u52a8\u91cf\u4e0d\u53d8\u91cf",
-            "\u8d28\u5fc3\u7cfb",
-            "\u8d28\u5fc3\u7cfb\u901f\u5ea6",
-            "\u4e8c\u4f53\u8870\u53d8",
-            "\u5b9e\u9a8c\u5ba4\u7cfb\u53d8\u6362",
-            "\u80fd\u91cf-\u52a8\u91cf\u5b88\u6052",
+            "多普勒",
+            "红移",
+            "蓝移",
+            "总能量",
+            "动能",
+            "相对论动量",
+            "能量-动量关系",
+            "四动量",
+            "四动量不变量",
+            "质心系",
+            "质心系速度",
+            "二体衰变",
+            "实验室系变换",
+            "能量-动量守恒",
         ),
     }
 )
@@ -529,19 +529,19 @@ def module_has_explicit_evidence(module: dict[str, Any], record: dict[str, Any])
         for key in ("module", "topic", "chapter", "note")
     )
     normalized_direct = normalize_topic_text(direct_text)
-    chapter_prefix = module_name.split("\uff1a", 1)[0].strip()
+    chapter_prefix = module_name.split("：", 1)[0].strip()
     chapter_match = (
-        (chapter_prefix.startswith("\u7b2c") or chapter_prefix.lower().startswith("chapter"))
+        (chapter_prefix.startswith("第") or chapter_prefix.lower().startswith("chapter"))
         and normalize_topic_text(chapter_prefix) in normalized_direct
         and any(
             marker in record_learning_text(record)
             for marker in (
-                "\u5b66\u5b8c",
-                "\u5b66\u4e60",
-                "\u590d\u4e60",
-                "\u5b8c\u6210",
-                "\u7ec3\u4e60",
-                "\u505a\u4e86",
+                "学完",
+                "学习",
+                "复习",
+                "完成",
+                "练习",
+                "做了",
             )
         )
     )

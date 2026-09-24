@@ -19,7 +19,10 @@ from study_app.single_instance import (
     send_wake_signal,
 )
 from study_app.ui.theme import build_stylesheet
-from study_app.ui.window_shell import MainWindow
+from study_app.ui.window_shell import create_main_window
+
+
+MainWindow = create_main_window  # compatibility for existing callers
 
 
 LOGGER = logging.getLogger(__name__)
@@ -159,7 +162,7 @@ def run_app() -> None:
             cleanup_generated_pdfs()
         except Exception as error:
             LOGGER.error("Generated PDF cleanup failed (%s)", type(error).__name__)
-        window = MainWindow(load_dashboard_state())
+        window = create_main_window(load_dashboard_state())
 
         weekly_collection_thread = WeeklyCollectionWorker()
         weekly_collection_thread.start()

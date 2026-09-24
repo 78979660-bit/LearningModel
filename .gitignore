@@ -28,6 +28,7 @@ __pycache__/
 .pytest_cache/
 build/
 dist/
+output/
 release/artifacts/
 recovery-child/
 .idea/

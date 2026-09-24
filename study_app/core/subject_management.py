@@ -18,7 +18,7 @@ LABELS = {'introduce': '引入学科', 'remove': '移除学科（保留历史）
 
 
 def list_subjects(db_path):
-    with SubjectCatalogRepository(db_path)._open() as connection:
+    with SubjectCatalogRepository(db_path).transaction() as connection:
         return [dict(row) for row in connection.execute(
             'SELECT subject_key,canonical_name,display_name,lifecycle_status FROM subject_catalog ORDER BY canonical_name_normalized'
         )]
@@ -74,7 +74,7 @@ def prepare_management(db_path, kind, *, name='', outline='', subject_key=None):
     if kind not in LABELS:
         raise ValueError('不支持的学科管理操作')
     repository = SubjectCatalogRepository(db_path)
-    with repository._open() as connection:
+    with repository.transaction() as connection:
         connection.execute('BEGIN')
         revision = connection.execute('SELECT catalog_revision FROM subject_catalog_state').fetchone()[0]
         if kind == 'introduce':
@@ -164,7 +164,7 @@ def execute_management(db_path, operation_id, *, confirmation_name, acknowledged
     if action['kind'] not in LABELS or acknowledged is not True or confirmation_name != action['name']:
         raise ValueError('必须勾选影响说明，并准确输入学科全名')
     repository = SubjectCatalogRepository(db_path)
-    with repository._open() as connection:
+    with repository.transaction() as connection:
         if prepared.status in {'completed', 'db_committed_projection_pending'}:
             event = connection.execute("SELECT detail_json FROM subject_operation_events WHERE operation_id=? AND event_type='subject_management_applied'", (operation_id,)).fetchone()
             if event:
@@ -174,7 +174,7 @@ def execute_management(db_path, operation_id, *, confirmation_name, acknowledged
     approve_changeset(db_path, operation_id, approver='local-user-explicit-confirmation')
     attempt = 'attempt:' + uuid.uuid4().hex
     try:
-        with repository._open(readonly=False) as connection:
+        with repository.transaction(readonly=False) as connection:
             connection.execute('BEGIN IMMEDIATE')
             operation, changeset, payload, vector = _approved_rows(connection, operation_id)
             _check_version_vector(connection, operation, vector)
@@ -205,7 +205,7 @@ def execute_management(db_path, operation_id, *, confirmation_name, acknowledged
             connection.execute("UPDATE subject_operation_attempts SET status='succeeded',finished_at=CURRENT_TIMESTAMP WHERE attempt_id=?", (attempt,))
             connection.execute("UPDATE subject_change_operations SET status='db_committed_projection_pending',updated_at=CURRENT_TIMESTAMP WHERE operation_id=?", (operation_id,))
     except Exception as error:
-        with repository._open(readonly=False) as connection:
+        with repository.transaction(readonly=False) as connection:
             connection.execute("UPDATE subject_change_operations SET status='failed_before_commit',updated_at=CURRENT_TIMESTAMP WHERE operation_id=? AND status='approved'", (operation_id,))
             connection.execute("INSERT INTO subject_operation_events(operation_id,event_type,detail_json) VALUES (?,'subject_management_failed',?)", (operation_id, json.dumps({'error': str(error)}, ensure_ascii=False)))
         raise

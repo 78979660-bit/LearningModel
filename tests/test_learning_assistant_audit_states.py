@@ -141,6 +141,23 @@ def test_audit_status_vocabulary_covers_contract():
     assert expected.issubset(set(audit.AUDIT_STATUS_VALUES))
 
 
+def test_engine_audit_marker_failure_is_visible(monkeypatch):
+    from study_app.ai.audit import AuditPersistenceError
+    from study_app.core.learning_assistant_engine import LearningAssistantEngine
+
+    engine = object.__new__(LearningAssistantEngine)
+
+    def fail_to_persist(_value):
+        raise AuditPersistenceError("audit storage unavailable")
+
+    monkeypatch.setattr(audit, "mark_audit_completed", fail_to_persist)
+    with pytest.raises(AuditPersistenceError, match="audit storage unavailable"):
+        engine._mark_audit(42, "mark_audit_completed")
+
+    with pytest.raises(AttributeError):
+        engine._mark_audit(42, "misspelled_audit_marker")
+
+
 def test_mock_advisor_lifecycle_journals_contract_states(
     seeded_db, model_path, tmp_path
 ):

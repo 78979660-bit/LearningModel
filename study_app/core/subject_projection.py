@@ -111,11 +111,10 @@ def process_projection_outbox(
 ) -> dict:
     """Publish one revision-aware outbox item while holding the DB write reservation."""
     repository = SubjectCatalogRepository(db_path)
-    connection = repository._open(readonly=False)
+    connection = repository.begin_immediate()
     selected_task_id: str | None = None
     operation_id: str | None = None
     try:
-        connection.execute("BEGIN IMMEDIATE")
         if task_id is None:
             row = connection.execute(
                 """
@@ -219,7 +218,7 @@ def process_projection_outbox(
     except Exception as error:
         connection.rollback()
         if selected_task_id is not None and operation_id is not None:
-            with repository._open(readonly=False) as failure_connection:
+            with repository.transaction(readonly=False) as failure_connection:
                 failure_connection.execute(
                     """
                     UPDATE subject_projection_outbox

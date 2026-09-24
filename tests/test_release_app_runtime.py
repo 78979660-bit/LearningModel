@@ -196,7 +196,7 @@ class ReleaseAppRuntimeTests(unittest.TestCase):
             patch.object(app_runtime, "_record_optional_capability_diagnostics") as diagnostics,
             patch.object(app_runtime, "build_stylesheet", return_value="QSS"),
             patch.object(app_runtime, "load_dashboard_state", return_value="STATE"),
-            patch.object(app_runtime, "MainWindow", return_value=window),
+            patch.object(app_runtime, "create_main_window", return_value=window),
             patch.object(app_runtime, "WeeklyCollectionWorker", return_value=worker),
             patch.object(app_runtime, "WakeServer", return_value=wake_server),
             self.assertLogs("study_app.ui.app_runtime", level="WARNING") as captured,

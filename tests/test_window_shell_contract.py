@@ -59,6 +59,20 @@ class WindowShellContractTests(unittest.TestCase):
         self.assertIs(main_window.MainWindow, window_shell.MainWindow)
         self.assertIs(main_window.FloatingIcon, window_shell.FloatingIcon)
 
+    def test_public_window_entries_are_factories_with_cached_qt_types(self) -> None:
+        from PySide6.QtWidgets import QMainWindow, QWidget
+
+        from study_app.ui import window_shell
+
+        self.assertIs(window_shell.MainWindow, window_shell.create_main_window)
+        self.assertIs(window_shell.FloatingIcon, window_shell.create_floating_icon)
+        window_type = window_shell._MainWindowType.build()
+        icon_type = window_shell._FloatingIconType.build()
+        self.assertIs(window_type, window_shell._MainWindowType.build())
+        self.assertIs(icon_type, window_shell._FloatingIconType.build())
+        self.assertTrue(issubclass(window_type, QMainWindow))
+        self.assertTrue(issubclass(icon_type, QWidget))
+
     def build_window(self):
         from PySide6.QtWidgets import QSystemTrayIcon, QWidget
         from study_app.ui import window_shell

@@ -4,6 +4,7 @@ import hashlib
 import inspect
 import unittest
 from datetime import date
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from study_app.core.dashboard import DashboardState, SubjectSummary
@@ -233,6 +234,53 @@ class PracticePromptsContractTests(unittest.TestCase):
         self.assertIn("待收集登记失败", context)
         self.assertNotIn("backlog locked", context)
         self.assertIn("backlog locked", "\n".join(captured.output))
+
+    def test_missing_records_and_failed_records_have_distinct_context(self) -> None:
+        from study_app.core.practice_prompts import recent_practice_context
+
+        state = SimpleNamespace(memory_risks=(), bkt_alerts=(), raw_records=())
+        self.assertIn("暂无明确错因", recent_practice_context("高等数学", "级数", state))
+
+        state.raw_records = (None,)
+        with self.assertLogs("study_app.core.practice_prompts", level="ERROR") as captured:
+            context = recent_practice_context("高等数学", "级数", state)
+        self.assertIn("近期记录读取失败", context)
+        self.assertNotIn("暂无明确错因", context)
+        self.assertIn("AttributeError", "\n".join(captured.output))
+
+    def test_missing_seeds_and_failed_query_have_distinct_context(self) -> None:
+        from study_app.core.practice_prompts import practice_seed_context
+
+        with (
+            patch("study_app.data.practice_repository.find_practice_problems", side_effect=OSError("bank locked")),
+            self.assertLogs("study_app.core.practice_prompts", level="ERROR") as captured,
+        ):
+            context = practice_seed_context("CALC-SERIES", "级数", subject="高等数学")
+        self.assertIn("样题种子读取或处理失败", context)
+        self.assertNotIn("暂无同模板样题种子", context)
+        self.assertIn("bank locked", "\n".join(captured.output))
+
+        with (
+            patch("study_app.data.practice_repository.find_practice_problems", return_value=[]),
+            patch("study_app.data.collection_backlog.register_collection_gap", side_effect=OSError("backlog locked")),
+            self.assertLogs("study_app.core.practice_prompts", level="ERROR"),
+        ):
+            context = practice_seed_context("CALC-SERIES", "级数", subject="高等数学")
+        self.assertIn("暂无同模板样题种子", context)
+        self.assertIn("待收集登记失败", context)
+
+    def test_oj_query_failure_is_not_described_as_empty_bank(self) -> None:
+        from study_app.core.practice_prompts import build_oj_practice_list
+
+        line = "计算机科学 / 图搜索\n当天作业：参考难度 72/100；题库模板 CS-OJ-PRACTICE；题量 1 题。"
+        with (
+            patch("study_app.data.practice_repository.find_practice_problems", side_effect=OSError("bank locked")),
+            self.assertLogs("study_app.core.practice_prompts", level="ERROR") as captured,
+        ):
+            context = build_oj_practice_list(line, self.state_for("计算机科学"), "计算机科学")
+        self.assertIn("题库读取失败", context)
+        self.assertNotIn("暂未匹配到足够", context)
+        self.assertIn("bank locked", "\n".join(captured.output))
 
     def assert_golden(
         self,

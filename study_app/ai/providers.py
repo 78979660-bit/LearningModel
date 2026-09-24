@@ -44,9 +44,9 @@ PROVIDERS = {
 LLM_FEATURES = {
     "record_parser": "新增记录智能解析",
     "attachment_parser": "附件题面理解",
-    "error_classifier": "错因归类",
-    "knowledge_mapping": "知识点自动映射",
-    "difficulty_calibration": "题目难度校准",
+    "error_classifier": "记录解析：LLM 错因归类",
+    "knowledge_mapping": "记录解析：LLM 知识点映射",
+    "difficulty_calibration": "记录解析：LLM 难度校准",
     "plan_generation": "今日计划生成",
     "daily_summary": "每日学习总结",
     "natural_query": "自然语言查询",
@@ -173,7 +173,7 @@ def should_upgrade_feature_defaults(raw: dict[str, Any] | None) -> bool:
 
 def save_llm_settings(settings: LLMSettings | dict[str, Any]) -> None:
     if isinstance(settings, LLMSettings):
-        payload = settings.__dict__
+        payload = vars(settings).copy()
     else:
         payload = {**DEFAULT_LLM_SETTINGS, **settings}
     provider = payload.get("provider") if payload.get("provider") in PROVIDERS else "local"

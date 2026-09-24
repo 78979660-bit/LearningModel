@@ -2,6 +2,11 @@ from __future__ import annotations
 
 import hashlib
 import json
+from functools import lru_cache
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from PySide6.QtWidgets import QWidget
 
 from study_app.core.async_tasks import AsyncTaskService, TaskStatus
 from study_app.core.dashboard import DashboardState
@@ -26,8 +31,18 @@ SOURCE_OPTIONS = [
 
 RECORD_RECOGNITION_TASK_TIMEOUT_SECONDS = 30.0
 
-class AddRecordDialog:
-    def __new__(cls, owner=None, on_saved=None, subject_names: tuple[str, ...] = ()):
+def create_record_editor(owner=None, on_saved=None, subject_names: tuple[str, ...] = ()) -> QWidget:
+    """Create the record editor widget after Qt is loaded by the UI runtime."""
+    return _RecordEditorType.build()(owner, on_saved, subject_names)
+
+
+AddRecordDialog = create_record_editor  # compatibility for existing callers
+
+
+class _RecordEditorType:
+    @staticmethod
+    @lru_cache(maxsize=1)
+    def build():
         from datetime import date
         from pathlib import Path
         import re
@@ -58,8 +73,8 @@ class AddRecordDialog:
             def wheelEvent(self, event):
                 event.ignore()
 
-        class _AddRecordDialog(QWidget):
-            def __init__(self, parent):
+        class _RecordEditorWidget(QWidget):
+            def __init__(self, parent, on_saved, subject_names: tuple[str, ...]):
                 super().__init__(parent)
                 self.attachments = []
                 self.problems = []
@@ -940,7 +955,7 @@ class AddRecordDialog:
                 self.extracted_context = ""
                 self.extraction_status.setText("附件解析会在点击“识别题目”时自动运行。")
 
-        return _AddRecordDialog(owner)
+        return _RecordEditorWidget
 
 def add_record_page(save_callback, state: DashboardState):
     from PySide6.QtWidgets import QScrollArea, QVBoxLayout, QWidget
@@ -952,7 +967,7 @@ def add_record_page(save_callback, state: DashboardState):
     layout = QVBoxLayout(content)
     layout.setContentsMargins(24, 22, 24, 24)
     layout.setSpacing(16)
-    editor = AddRecordDialog(content, save_callback, record_subject_names(state))
+    editor = create_record_editor(content, save_callback, record_subject_names(state))
     layout.addWidget(editor)
     layout.addStretch()
     scroll.setWidget(content)

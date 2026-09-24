@@ -1,8 +1,13 @@
 from __future__ import annotations
 
 from datetime import datetime
+from functools import lru_cache
 import logging
 from time import perf_counter
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from PySide6.QtWidgets import QMainWindow, QWidget
 
 from study_app.ai.providers import LLMSettings, load_llm_settings, save_llm_settings
 from study_app.core.dashboard import DashboardState, load_dashboard_state
@@ -22,8 +27,18 @@ from study_app.ui.study_plan_page import study_plan_page
 from study_app.ui.theme import PALETTE
 
 
-class MainWindow:  # real base class is injected after PySide6 import
-    def __new__(cls, state: DashboardState):
+def create_main_window(state: DashboardState) -> QMainWindow:
+    """Create the Qt main window, loading its class only when a window is needed."""
+    return _MainWindowType.build()(state)
+
+
+MainWindow = create_main_window  # compatibility for existing callers
+
+
+class _MainWindowType:
+    @staticmethod
+    @lru_cache(maxsize=1)
+    def build():
         from PySide6.QtCore import QObject, Signal, QVariantAnimation, QEasingCurve
         from PySide6.QtWidgets import QMainWindow
 
@@ -507,7 +522,7 @@ class MainWindow:  # real base class is injected after PySide6 import
 
             def hide_to_float_icon(self):
                 if self.float_icon is None:
-                    self.float_icon = FloatingIcon(self)
+                    self.float_icon = create_floating_icon(self)
                     self.float_icon.move(48, 180)
                 self.float_icon.show()
                 self.hide()
@@ -614,10 +629,20 @@ class MainWindow:  # real base class is injected after PySide6 import
                 event.accept()
                 from PySide6.QtWidgets import QApplication
                 QApplication.quit()
-        return _MainWindow(state)
+        return _MainWindow
 
-class FloatingIcon:
-    def __new__(cls, owner):
+def create_floating_icon(owner: QMainWindow) -> QWidget:
+    """Create the floating window; the Qt widget class is cached after first use."""
+    return _FloatingIconType.build()(owner)
+
+
+FloatingIcon = create_floating_icon  # compatibility for existing callers
+
+
+class _FloatingIconType:
+    @staticmethod
+    @lru_cache(maxsize=1)
+    def build():
         from PySide6.QtCore import QPoint, Qt
         from PySide6.QtGui import QAction, QColor, QPainter, QPen
         from PySide6.QtWidgets import QMenu, QWidget
@@ -681,4 +706,4 @@ class FloatingIcon:
                 menu.addAction(quit_action)
                 menu.exec(event.globalPos())
 
-        return _FloatingIcon(owner)
+        return _FloatingIcon
