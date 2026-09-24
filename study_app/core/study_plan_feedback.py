@@ -1,8 +1,22 @@
 from __future__ import annotations
 
+import logging
+import math
+from dataclasses import dataclass
+
 from study_app.core.dashboard import DashboardState
 from study_app.core.study_plan_items import infer_subject_topic_from_plan_line
 from study_app.paths import MODEL_PATH
+
+
+LOGGER = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class PlannedHomeworkScoreResult:
+    score: float
+    source: str
+    fallback_reason: str = ""
 
 
 def plan_day_feedback_lines(saved_plan: dict, state: DashboardState, subject_scope: str | None) -> list[str]:
@@ -10,28 +24,56 @@ def plan_day_feedback_lines(saved_plan: dict, state: DashboardState, subject_sco
 
 
 def planned_homework_score(difficulty_score: float | None, is_correct: bool) -> float:
+    return planned_homework_score_result(difficulty_score, is_correct).score
+
+
+def planned_homework_score_result(
+    difficulty_score: float | None, is_correct: bool
+) -> PlannedHomeworkScoreResult:
     difficulty = 55.0 if difficulty_score is None else max(0.0, min(100.0, float(difficulty_score)))
+    fallback_reason = ""
     try:
         from learning_monitor import difficulty_problem_score, load_json
-
-        policy = load_json(MODEL_PATH).get("warning_policy", {})
-        score = difficulty_problem_score(
-            {
-                "difficulty_score": difficulty,
-                "partial_credit": 1.0 if is_correct else 0.0,
-            },
-            policy,
-            {},
-        )
-        if score is not None:
-            return round(float(score), 1)
     except Exception:
-        pass
+        fallback_reason = "评分模块不可用"
+        LOGGER.exception("Model homework scoring is unavailable; using built-in score")
+    else:
+        try:
+            policy = load_json(MODEL_PATH).get("warning_policy", {})
+        except FileNotFoundError:
+            fallback_reason = "模型文件不存在"
+            LOGGER.info("Model file is absent; using built-in homework score")
+        except Exception:
+            fallback_reason = "模型读取失败"
+            LOGGER.exception("Model policy could not be read; using built-in homework score")
+        else:
+            try:
+                score = difficulty_problem_score(
+                    {
+                        "difficulty_score": difficulty,
+                        "partial_credit": 1.0 if is_correct else 0.0,
+                    },
+                    policy,
+                    {},
+                )
+                if score is not None:
+                    numeric_score = float(score)
+                    if not math.isfinite(numeric_score):
+                        raise ValueError("non-finite homework score")
+                    return PlannedHomeworkScoreResult(round(numeric_score, 1), "model_policy")
+            except Exception:
+                fallback_reason = "模型评分失败"
+                LOGGER.exception("Model homework scoring failed; using built-in score")
+            else:
+                fallback_reason = "模型未返回分数"
+                LOGGER.info("Model policy returned no homework score; using built-in score")
 
     ratio = difficulty / 100
     if is_correct:
-        return round(58 + (100 - 58) * (ratio**1.15), 1)
-    return round(8 + (58 - 8) * (ratio**1.25), 1)
+        score = round(58 + (100 - 58) * (ratio**1.15), 1)
+    else:
+        score = round(8 + (58 - 8) * (ratio**1.25), 1)
+    return PlannedHomeworkScoreResult(score, "built_in", fallback_reason)
 
 
 def plan_day_feedback_details(saved_plan: dict, state: DashboardState, subject_scope: str | None) -> list[dict[str, object]]:

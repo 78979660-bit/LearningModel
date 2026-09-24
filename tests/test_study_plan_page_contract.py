@@ -171,6 +171,181 @@ class StudyPlanPageContractTests(unittest.TestCase):
         for name in ("study_plan_page", "plan_day_feedback_card", "plan_section_card"):
             self.assertIs(getattr(main_window, name), getattr(study_plan_page, name))
 
+    def test_budget_draft_is_prepared_without_saving(self) -> None:
+        from study_app.core.plan_candidates import CandidateCollection
+        from study_app.ui import study_plan_page
+
+        with (
+            patch.object(study_plan_page, "get_budgeted_day_plan", return_value=None),
+            patch.object(study_plan_page, "save_study_day_budget") as save_budget,
+            patch.object(study_plan_page, "create_budgeted_day_plan") as save_plan,
+        ):
+            draft = study_plan_page._prepare_budget_plan(
+                self.state(), None, "60", {}, {}, CandidateCollection((), ()), {}, {}
+            )
+        self.assertEqual(draft.budget.available_minutes, 60)
+        self.assertEqual(draft.plan.remaining_minutes, 60)
+        self.assertEqual(draft.new_estimates, {})
+        save_budget.assert_not_called()
+        save_plan.assert_not_called()
+
+    def test_budget_draft_rejects_completed_task_missing_from_current_candidates(self) -> None:
+        from study_app.core.plan_candidates import CandidateCollection
+        from study_app.ui import study_plan_page
+
+        prior = {"items": [{"task_id": "removed-task", "checked": True}]}
+        with patch.object(study_plan_page, "get_budgeted_day_plan", return_value=prior):
+            with self.assertRaisesRegex(ValueError, "已有完成任务不在当前推荐中"):
+                study_plan_page._prepare_budget_plan(
+                    self.state(), None, "60", {}, {}, CandidateCollection((), ()), {}, {}
+                )
+
+    def test_reusable_plan_keeps_existing_plan_until_refresh_is_needed(self) -> None:
+        from study_app.ui import study_plan_page
+
+        saved = {"id": 17}
+        with (
+            patch.object(study_plan_page, "get_active_study_plan", return_value=saved),
+            patch.object(study_plan_page, "should_refresh_plan_for_model", return_value=False) as refresh,
+            patch.object(study_plan_page, "should_upgrade_plan_to_llm", return_value=False) as upgrade,
+        ):
+            self.assertIs(study_plan_page._reusable_active_plan(self.state(), None, False), saved)
+            self.assertIsNone(study_plan_page._reusable_active_plan(self.state(), None, True))
+            refresh.assert_called_once()
+            upgrade.assert_called_once()
+
+    def test_completed_day_feedback_excludes_shown_and_incomplete_days(self) -> None:
+        from study_app.ui import study_plan_page
+
+        details = [
+            {"day_index": 1, "complete": True, "popup": "已显示"},
+            {"day_index": 2, "complete": True, "popup": "新完成"},
+            {"day_index": 3, "complete": False, "popup": "未完成"},
+        ]
+        with (
+            patch.object(study_plan_page, "get_setting", return_value=["9:1"]),
+            patch.object(study_plan_page, "plan_day_feedback_details", return_value=details),
+            patch.object(study_plan_page, "set_setting") as save_markers,
+        ):
+            feedback = study_plan_page._completed_day_feedback(
+                {"id": 9}, self.state(), None
+            )
+
+        self.assertEqual(feedback.messages, ("新完成",))
+        self.assertEqual(feedback.previous_markers, frozenset({"9:1"}))
+        self.assertEqual(feedback.current_markers, frozenset({"9:1", "9:2"}))
+        save_markers.assert_not_called()
+
+        with patch.object(study_plan_page, "set_setting") as save_markers:
+            study_plan_page._save_completed_day_feedback_markers(feedback)
+        save_markers.assert_called_once_with("study_plan_day_feedback_shown", ["9:1", "9:2"])
+
+    def test_archiving_current_plan_invalidates_summary_only_after_archive(self) -> None:
+        from study_app.ui import study_plan_page
+
+        with (
+            patch.object(study_plan_page, "archive_active_study_plan") as archive,
+            patch.object(study_plan_page, "delete_settings_by_prefix") as invalidate,
+        ):
+            study_plan_page._archive_current_plan("计算机科学")
+        archive.assert_called_once_with("计算机科学")
+        invalidate.assert_called_once_with("daily_summary_cache:")
+
+        with (
+            patch.object(
+                study_plan_page,
+                "archive_active_study_plan",
+                side_effect=RuntimeError("archive failed"),
+            ),
+            patch.object(study_plan_page, "delete_settings_by_prefix") as invalidate,
+        ):
+            with self.assertRaisesRegex(RuntimeError, "archive failed"):
+                study_plan_page._archive_current_plan("计算机科学")
+        invalidate.assert_not_called()
+
+    def test_dashboard_update_reaches_both_panels_without_affecting_another_page(self) -> None:
+        from study_app.ui import study_plan_page
+
+        with (
+            patch.object(study_plan_page, "get_study_day_budget", return_value=None),
+            patch.object(study_plan_page, "get_budgeted_day_plan", return_value=None),
+        ):
+            stack, page, _, _ = self.pdf_page(lambda *_args: None)
+        other_page = None
+        try:
+            with (
+                patch.object(study_plan_page, "get_study_day_budget", return_value=None),
+                patch.object(study_plan_page, "get_budgeted_day_plan", return_value=None),
+            ):
+                other_page = study_plan_page.study_plan_page(self.state())
+            updated = replace(self.state(), today=date(2026, 7, 16))
+            page._set_dashboard_state(updated)
+            with patch.object(study_plan_page, "get_budgeted_day_plan", return_value=None) as read_budget:
+                page.widget()._budget_plan_callbacks[1]()
+                self.assertEqual(read_budget.call_args.args[0], "2026-07-16")
+                other_page.widget()._budget_plan_callbacks[1]()
+                self.assertEqual(read_budget.call_args.args[0], self.state().today.isoformat())
+            saved = study_plan_page.get_active_study_plan()
+            with patch.object(study_plan_page, "plan_day_feedback_details", return_value=[]) as feedback:
+                page.widget()._plan_callbacks[1](saved, allow_auto_refresh=False, reload_state=False)
+                self.assertIs(feedback.call_args.args[1], updated)
+                other_page.widget()._plan_callbacks[1](saved, allow_auto_refresh=False, reload_state=False)
+                self.assertEqual(feedback.call_args.args[1].today, self.state().today)
+        finally:
+            if other_page is not None:
+                other_page.deleteLater()
+            page.deleteLater()
+            self.app.processEvents()
+            stack.close()
+
+    def test_review_dialog_cancel_does_not_save_or_refresh_page(self) -> None:
+        from PySide6.QtWidgets import QDialog, QPushButton
+        from study_app.ui import study_plan_page
+
+        stack, page, _, _ = self.generation_page(lambda *_args: None)
+        try:
+            with (
+                patch.object(QDialog, "exec", return_value=QDialog.DialogCode.Rejected),
+                patch.object(study_plan_page, "_apply_final_review_modes") as save,
+                patch.object(study_plan_page, "load_dashboard_state") as reload_state,
+            ):
+                button = next(b for b in page.findChildren(QPushButton) if b.text() == "期末复习模式")
+                button.click()
+                save.assert_not_called()
+                reload_state.assert_not_called()
+        finally:
+            page.deleteLater()
+            self.app.processEvents()
+            stack.close()
+
+    def test_review_dialog_save_applies_selection_and_refreshes_page(self) -> None:
+        from PySide6.QtWidgets import QCheckBox, QDialog, QPushButton
+        from study_app.ui import study_plan_page
+
+        def accept_selection(dialog):
+            dialog.findChild(QCheckBox).setChecked(True)
+            next(b for b in dialog.findChildren(QPushButton) if b.text() == "保存设置").click()
+            return dialog.result()
+
+        stack, page, _, _ = self.generation_page(lambda *_args: None)
+        try:
+            with (
+                patch.object(QDialog, "exec", accept_selection),
+                patch.object(study_plan_page, "final_review_subject_names", return_value=("数学",)),
+                patch.object(study_plan_page, "_apply_final_review_modes") as save,
+                patch.object(study_plan_page, "load_dashboard_state", return_value=self.state()) as reload_state,
+                patch("PySide6.QtWidgets.QMessageBox.information") as information,
+            ):
+                button = next(b for b in page.findChildren(QPushButton) if b.text() == "期末复习模式")
+                button.click()
+                save.assert_called_once_with({"数学": False}, {"数学": True})
+                self.assertTrue(reload_state.called)
+                self.assertIn("数学：已启用", information.call_args.args[2])
+        finally:
+            page.deleteLater()
+            self.app.processEvents()
+            stack.close()
+
     def test_study_plan_page_empty_state_is_read_only_and_keeps_callbacks(self) -> None:
         from PySide6.QtWidgets import QLabel, QPushButton
         from study_app.ui import study_plan_page
@@ -1257,6 +1432,7 @@ class StudyPlanPageContractTests(unittest.TestCase):
 
     def test_saved_plan_result_button_writes_record_and_item_state(self) -> None:
         from PySide6.QtWidgets import QPushButton
+        from study_app.core.study_plan_feedback import PlannedHomeworkScoreResult
         from study_app.ui import study_plan_page
 
         state = self.state()
@@ -1295,14 +1471,18 @@ class StudyPlanPageContractTests(unittest.TestCase):
             patch.object(study_plan_page, "final_review_subject_names", return_value=()),
             patch.object(study_plan_page, "should_refresh_plan_for_model", return_value=False),
             patch.object(study_plan_page, "infer_subject_topic_from_plan_line", return_value=("测试占位学科", "概率论")),
-            patch.object(study_plan_page, "planned_homework_score", return_value=86.0),
+            patch.object(
+                study_plan_page,
+                "planned_homework_score_result",
+                return_value=PlannedHomeworkScoreResult(86.0, "built_in", "模型文件不存在"),
+            ),
             patch.object(study_plan_page, "plan_day_feedback_details", return_value=[]),
             patch.object(study_plan_page, "add_learning_record") as add_record,
             patch.object(study_plan_page, "update_study_plan_item_state") as update_item,
             patch.object(study_plan_page, "delete_settings_by_prefix"),
             patch.object(study_plan_page, "get_setting", return_value={}),
-            patch.object(study_plan_page, "set_setting"),
-            patch("PySide6.QtWidgets.QMessageBox.information"),
+            patch.object(study_plan_page, "set_setting") as set_setting,
+            patch("PySide6.QtWidgets.QMessageBox.information") as information,
         ):
             page = study_plan_page.study_plan_page(state)
             button = next(
@@ -1316,6 +1496,12 @@ class StudyPlanPageContractTests(unittest.TestCase):
         self.assertEqual(record["score"], 86.0)
         self.assertEqual(record["problems"][0]["difficulty_score"], 72.0)
         self.assertEqual(record["problems"][0]["status"], "correct")
+        self.assertEqual(set_setting.call_args.args[1]["score_source"], "built_in")
+        self.assertEqual(
+            set_setting.call_args.args[1]["score_fallback_reason"], "模型文件不存在"
+        )
+        self.assertEqual(set_setting.call_args.args[1]["result_score"], 86.0)
+        self.assertIn("模型文件不存在", information.call_args.args[2])
         self.assertEqual(
             add_record.call_args.kwargs,
             {"study_plan_item_id": 23, "study_plan_result": "correct"},
@@ -1324,6 +1510,7 @@ class StudyPlanPageContractTests(unittest.TestCase):
 
     def test_saved_plan_commit_is_not_reported_failed_when_refresh_fails(self) -> None:
         from PySide6.QtWidgets import QPushButton
+        from study_app.core.study_plan_feedback import PlannedHomeworkScoreResult
         from study_app.ui import study_plan_page
 
         state = self.state()
@@ -1370,7 +1557,11 @@ class StudyPlanPageContractTests(unittest.TestCase):
                 "infer_subject_topic_from_plan_line",
                 return_value=("测试占位学科", "概率论"),
             ),
-            patch.object(study_plan_page, "planned_homework_score", return_value=86.0),
+            patch.object(
+                study_plan_page,
+                "planned_homework_score_result",
+                return_value=PlannedHomeworkScoreResult(86.0, "model_policy"),
+            ),
             patch.object(study_plan_page, "plan_day_feedback_details", return_value=[]),
             patch.object(study_plan_page, "add_learning_record") as add_record,
             patch.object(study_plan_page, "get_setting", return_value={}),

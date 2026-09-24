@@ -4,8 +4,9 @@ import json
 import socket
 import urllib.error
 import urllib.request
+from collections.abc import Collection
 
-from study_app.ai.providers import LLMSettings, estimate_tokens, load_llm_settings
+from study_app.ai.providers import LLM_FEATURES, LLMSettings, estimate_tokens, load_llm_settings
 
 
 class LLMNotConfiguredError(RuntimeError):
@@ -160,46 +161,59 @@ def assert_can_call_llm(prompt: str, settings: LLMSettings | None = None) -> LLM
     return settings
 
 
-def parse_record_with_llm(payload: dict) -> dict:
+def parse_record_with_llm(payload: dict, *, settings: LLMSettings | None = None) -> dict:
     from study_app.ai.audit import audited_chat_completion_json, summarize_payload
 
     class AuditedPayload(dict):
         pass
 
-    prompt = build_record_parse_prompt(payload)
+    settings = settings or load_llm_settings()
+    prompt = build_record_parse_prompt(payload, settings.enabled_features)
     content = audited_chat_completion_json(
         "record_parser",
         prompt,
         summarize_payload(payload),
+        settings=settings,
     )
     result = AuditedPayload(json.loads(content))
     result.audit_id = content.audit_id
     return result
 
 
-def build_record_parse_prompt(payload: dict) -> str:
+def build_record_parse_prompt(
+    payload: dict,
+    enabled_features: Collection[str] | None = None,
+) -> str:
+    features = set(LLM_FEATURES if enabled_features is None else enabled_features)
+    problem_schema = {
+        "title": "题号或简短标题",
+        "statement": "题面或题面摘要",
+        "correctness": 0.0,
+        "error_cause": "错因，没有则为空字符串",
+        "statement_source": "llm_text",
+    }
+    constraints = ["correctness 必须是 0 到 1"]
+    if "error_classifier" in features:
+        problem_schema["error_category"] = (
+            "concept_forgetting|condition_misjudgment|calculation_error|"
+            "modeling_error|boundary_omission|method_gap|time_management|none"
+        )
+    if "knowledge_mapping" in features:
+        problem_schema["related_topics"] = ["知识点"]
+        constraints.append("related_topics 要尽量具体，优先使用课程知识点而不是笼统学科名")
+    if "difficulty_calibration" in features:
+        problem_schema["difficulty_score"] = 0
+        problem_schema["difficulty"] = "easy|medium|hard"
+        constraints.append("difficulty_score 必须是 0 到 100")
     return (
         "你是学习记录结构化解析器。请只输出 JSON，不要输出解释。\n"
         "任务：根据用户的自然语言学习记录、错因、附件 OCR/PDF 文本，识别题目级作答证据。\n"
         "输出 JSON schema：\n"
-        "{\n"
-        '  "problems": [\n'
-        "    {\n"
-        '      "title": "题号或简短标题",\n'
-        '      "statement": "题面或题面摘要",\n'
-        '      "correctness": 0.0,\n'
-        '      "difficulty_score": 0,\n'
-        '      "difficulty": "easy|medium|hard",\n'
-        '      "error_cause": "错因，没有则为空字符串",\n'
-        '      "error_category": "concept_forgetting|condition_misjudgment|calculation_error|modeling_error|boundary_omission|method_gap|time_management|none",\n'
-        '      "related_topics": ["知识点"],\n'
-        '      "statement_source": "llm_text"\n'
-        "    }\n"
-        "  ]\n"
-        "}\n"
-        "约束：correctness 必须是 0 到 1；difficulty_score 必须是 0 到 100；"
-        "related_topics 要尽量具体，优先使用课程知识点而不是笼统学科名；"
-        "不要编造附件中不存在的具体题面，无法确定时写摘要。\n\n"
+        + json.dumps({"problems": [problem_schema]}, ensure_ascii=False, indent=2)
+        + "\n约束："
+        + "；".join(constraints)
+        + "；不要输出 schema 以外的字段；"
+        + "不要编造附件中不存在的具体题面，无法确定时写摘要。\n\n"
         "输入：\n"
         + json.dumps(payload, ensure_ascii=False, default=str)
     )

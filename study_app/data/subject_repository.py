@@ -3,8 +3,9 @@ from __future__ import annotations
 import sqlite3
 import uuid
 from collections.abc import Mapping
+from contextlib import closing, contextmanager
 from pathlib import Path
-from typing import Callable
+from typing import Callable, Iterator
 
 from study_app.core.subject_capabilities import (
     CAPABILITY_KEYS,
@@ -63,8 +64,9 @@ def install_subject_lifecycle_schema(db_path: Path | str) -> None:
     """Explicit installer. Runtime reads and repository construction never call it."""
     schema_path = Path(__file__).with_name("f5_schema.sql")
     script = schema_path.read_text(encoding="utf-8")
-    with _connect(db_path, readonly=False) as connection:
-        connection.executescript(script)
+    with closing(_connect(db_path, readonly=False)) as connection:
+        with connection:
+            connection.executescript(script)
 
 
 class SubjectCatalogRepository:
@@ -118,8 +120,43 @@ class SubjectCatalogRepository:
             )
         return connection
 
+    @contextmanager
+    def transaction(
+        self, *, readonly: bool = True, snapshot: bool = False
+    ) -> Iterator[sqlite3.Connection]:
+        """Expose a checked catalog transaction for multi-table operations.
+
+        Callers that coordinate several tables can keep one atomic unit of work.
+        Use snapshot=True for a consistent multi-query read view.
+        The connection is committed or rolled back and then closed on exit.
+        """
+        connection = self._open(readonly=readonly)
+        try:
+            if readonly and snapshot:
+                # sqlite3 does not start a transaction for SELECT statements.
+                # Pin all reads in a multi-query view to one database snapshot.
+                connection.execute("BEGIN")
+            with connection:
+                yield connection
+        finally:
+            connection.close()
+
+    def begin_immediate(self) -> sqlite3.Connection:
+        """Reserve a catalog write transaction for a caller with explicit commits.
+
+        The caller must commit or roll back and close the returned connection.
+        This is used when projection publication must be coordinated with SQL.
+        """
+        connection = self._open(readonly=False)
+        try:
+            connection.execute("BEGIN IMMEDIATE")
+        except Exception:
+            connection.close()
+            raise
+        return connection
+
     def schema_diagnostics(self) -> dict[str, object]:
-        with _connect(self.db_path, readonly=True) as connection:
+        with closing(_connect(self.db_path, readonly=True)) as connection:
             names = _table_names(connection)
         required_missing = tuple(sorted(self.REQUIRED_TABLES - names))
         f2_ready = "knowledge_topic_registry" in names
@@ -161,7 +198,7 @@ class SubjectCatalogRepository:
             if type(value) is not bool:
                 raise ValueError(f"能力声明必须是布尔值：{key}={value!r}")
         try:
-            with self._open(readonly=False) as connection:
+            with self.transaction(readonly=False) as connection:
                 connection.execute(
                     """
                     INSERT INTO subject_catalog(
@@ -195,7 +232,7 @@ class SubjectCatalogRepository:
 
     def get_subject(self, subject_key: object) -> SubjectIdentity:
         valid_key = validate_subject_key(subject_key)
-        with self._open() as connection:
+        with self.transaction() as connection:
             row = connection.execute(
                 "SELECT * FROM subject_catalog WHERE subject_key = ?", (valid_key,)
             ).fetchone()
@@ -205,7 +242,7 @@ class SubjectCatalogRepository:
 
     def resolve_subject(self, name_or_alias: object) -> SubjectIdentity:
         normalized = normalize_alias(name_or_alias)
-        with self._open() as connection:
+        with self.transaction() as connection:
             row = connection.execute(
                 """
                 SELECT catalog.*
@@ -224,7 +261,7 @@ class SubjectCatalogRepository:
         text = normalize_name(alias, label="alias")
         normalized = normalize_alias(text)
         try:
-            with self._open(readonly=False) as connection:
+            with self.transaction(readonly=False) as connection:
                 if connection.execute(
                     "SELECT 1 FROM subject_catalog WHERE subject_key = ?", (valid_key,)
                 ).fetchone() is None:
@@ -254,7 +291,7 @@ class SubjectCatalogRepository:
             label="display_name",
         )
         try:
-            with self._open(readonly=False) as connection:
+            with self.transaction(readonly=False) as connection:
                 current = connection.execute(
                     "SELECT * FROM subject_catalog WHERE subject_key = ?", (valid_key,)
                 ).fetchone()
@@ -309,7 +346,7 @@ class SubjectCatalogRepository:
         )
         module_key = allocate_module_key(self._uuid_factory)
         try:
-            with self._open(readonly=False) as connection:
+            with self.transaction(readonly=False) as connection:
                 connection.execute(
                     """
                     INSERT INTO subject_module_identities(
@@ -336,7 +373,7 @@ class SubjectCatalogRepository:
 
     def get_module(self, module_key: object) -> ModuleIdentity:
         valid_key = validate_module_key(module_key)
-        with self._open() as connection:
+        with self.transaction() as connection:
             row = connection.execute(
                 "SELECT * FROM subject_module_identities WHERE module_key = ?",
                 (valid_key,),
@@ -357,7 +394,7 @@ class SubjectCatalogRepository:
         source = validate_subject_key(source_subject_key)
         target = validate_subject_key(target_subject_key)
         decision = normalize_name(decision_reference, label="decision_reference")
-        with self._open(readonly=False) as connection:
+        with self.transaction(readonly=False) as connection:
             connection.execute(
                 """
                 INSERT INTO subject_identity_relations(
@@ -374,7 +411,7 @@ class SubjectCatalogRepository:
         from study_app.core.topic_identity import validate_topic_key
 
         valid_key = validate_topic_key(topic_key)
-        with self._open() as connection:
+        with self.transaction() as connection:
             names = _table_names(connection)
             if "knowledge_topic_registry" not in names:
                 raise SubjectLifecycleNotInstalledError(
@@ -393,7 +430,7 @@ class SubjectCatalogRepository:
     ) -> CapabilityAvailability:
         valid_subject = validate_subject_key(subject_key)
         key = validate_capability_key(capability_key)
-        with self._open() as connection:
+        with self.transaction() as connection:
             subject = connection.execute(
                 "SELECT lifecycle_status FROM subject_catalog WHERE subject_key = ?",
                 (valid_subject,),
@@ -433,7 +470,7 @@ class SubjectCatalogRepository:
         )
 
     def catalog_revision(self) -> int:
-        with self._open() as connection:
+        with self.transaction() as connection:
             row = connection.execute(
                 "SELECT catalog_revision FROM subject_catalog_state WHERE singleton = 1"
             ).fetchone()

@@ -25,6 +25,36 @@ class StudyPlanFeedbackContractTests(unittest.TestCase):
 
         self.assertEqual(difficulty_problem_score.call_count, 6)
 
+    def test_planned_homework_score_reports_policy_and_fallback_source(self) -> None:
+        from study_app.core.study_plan_feedback import planned_homework_score_result
+
+        with (
+            patch("learning_monitor.load_json", return_value={"warning_policy": {}}),
+            patch("learning_monitor.difficulty_problem_score", return_value=82.25),
+        ):
+            self.assertEqual(
+                planned_homework_score_result(60, True).source,
+                "model_policy",
+            )
+
+        with (
+            patch("learning_monitor.load_json", side_effect=FileNotFoundError("missing")),
+            patch("learning_monitor.difficulty_problem_score") as scoring,
+        ):
+            result = planned_homework_score_result(60, True)
+        self.assertEqual(result.source, "built_in")
+        self.assertEqual(result.fallback_reason, "模型文件不存在")
+        scoring.assert_not_called()
+
+        with (
+            patch("learning_monitor.load_json", side_effect=ValueError("corrupt model")),
+            self.assertLogs("study_app.core.study_plan_feedback", level="ERROR") as captured,
+        ):
+            result = planned_homework_score_result(60, True)
+        self.assertEqual(result.source, "built_in")
+        self.assertEqual(result.fallback_reason, "模型读取失败")
+        self.assertIn("corrupt model", "\n".join(captured.output))
+
     def test_complete_and_incomplete_feedback_full_dicts(self) -> None:
         from study_app.core.study_plan_feedback import plan_day_feedback_details
 

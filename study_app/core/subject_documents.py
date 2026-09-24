@@ -284,7 +284,7 @@ def register_pdf(
         "failed": "failed",
     }[preflight_status]
     repository = SubjectCatalogRepository(db_path)
-    with repository._open(readonly=False) as connection:
+    with repository.transaction(readonly=False) as connection:
         existing_document = connection.execute(
             """
             SELECT page_count, encrypted, preflight_status,

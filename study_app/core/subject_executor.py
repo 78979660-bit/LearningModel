@@ -16,7 +16,7 @@ from study_app.data.subject_repository import SubjectCatalogRepository
 
 def _finish_attempt(db_path, attempt_id, status, error=None):
     repository = SubjectCatalogRepository(db_path)
-    with repository._open(readonly=False) as connection:
+    with repository.transaction(readonly=False) as connection:
         connection.execute(
             """
             UPDATE subject_operation_attempts
@@ -38,7 +38,7 @@ def execute_archive_changeset(
         raise ValueError("actor 必须非空")
     identifier = attempt_id or f"attempt:{uuid.uuid4().hex}"
     repository = SubjectCatalogRepository(db_path)
-    with repository._open(readonly=False) as connection:
+    with repository.transaction(readonly=False) as connection:
         connection.execute(
             "INSERT INTO subject_operation_attempts(attempt_id,operation_id,status,actor) VALUES (?,?,'running',?)",
             (identifier, operation_id, actor.strip()),
@@ -69,7 +69,7 @@ def execute_archive_changeset(
         reason = str(action.get("reason") or "").strip()
         if not subject_key or not reason:
             raise ValueError("归档动作缺少 subject_key 或 reason")
-        with repository._open(readonly=False) as connection:
+        with repository.transaction(readonly=False) as connection:
             connection.execute("BEGIN IMMEDIATE")
             operation = connection.execute(
                 "SELECT * FROM subject_change_operations WHERE operation_id=?",
@@ -165,7 +165,7 @@ def execute_archive_changeset(
         _finish_attempt(db_path, identifier, "succeeded")
         return {"operation_id": operation_id, "attempt_id": identifier, "status": "completed", "subject_key": subject_key, "idempotent": False}
     except Exception as error:
-        with repository._open(readonly=False) as connection:
+        with repository.transaction(readonly=False) as connection:
             connection.execute(
                 "UPDATE subject_change_operations SET status='failed_before_commit',updated_at=CURRENT_TIMESTAMP WHERE operation_id=? AND status<>'completed'",
                 (operation_id,),
@@ -584,7 +584,7 @@ def execute_switch_changeset(
         raise ValueError("actor 必须非空")
     identifier = attempt_id or f"attempt:{uuid.uuid4().hex}"
     repository = SubjectCatalogRepository(db_path)
-    with repository._open(readonly=False) as connection:
+    with repository.transaction(readonly=False) as connection:
         connection.execute(
             "INSERT INTO subject_operation_attempts(attempt_id,operation_id,status,actor) VALUES (?,?,'running',?)",
             (identifier, operation_id, actor.strip()),
@@ -611,7 +611,7 @@ def execute_switch_changeset(
                 "idempotent": True,
             }
     try:
-        with repository._open(readonly=False) as connection:
+        with repository.transaction(readonly=False) as connection:
             connection.execute("BEGIN IMMEDIATE")
             operation, changeset, payload, vector = _approved_rows(connection, operation_id)
             _check_version_vector(connection, operation, vector)
@@ -644,7 +644,7 @@ def execute_switch_changeset(
             )
         _finish_attempt(db_path, identifier, "succeeded")
     except Exception as error:
-        with repository._open(readonly=False) as connection:
+        with repository.transaction(readonly=False) as connection:
             connection.execute(
                 """
                 UPDATE subject_change_operations

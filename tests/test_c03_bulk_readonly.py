@@ -122,6 +122,11 @@ def test_readonly_repository_never_initializes_or_writes(tmp_path, monkeypatch):
         return connection
 
     monkeypatch.setattr(database, "connect_readonly", traced)
+    # These repositories own their read connectors after the database split.
+    from study_app.data import plan_repository, settings_audit_repository
+
+    monkeypatch.setattr(plan_repository, "connect_readonly", traced)
+    monkeypatch.setattr(settings_audit_repository, "connect_readonly", traced)
     assert database.load_raw_records(db_path)
     assert database.list_recent_records(db_path, limit=2)
     assert database.get_setting("missing", db_path=db_path) is None
@@ -132,6 +137,8 @@ def test_readonly_repository_never_initializes_or_writes(tmp_path, monkeypatch):
     assert database.recent_study_plan_texts(None, db_path=db_path) == []
     assert database.list_llm_call_audits(db_path=db_path) == []
 
+    assert any("FROM study_plans" in statement for statement in captured)
+    assert any("FROM llm_call_audits" in statement for statement in captured)
     assert before == db_path.read_bytes()
     assert not any(
         statement.lstrip().upper().startswith(

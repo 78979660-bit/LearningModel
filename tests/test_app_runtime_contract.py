@@ -80,7 +80,7 @@ class AppRuntimeContractTests(unittest.TestCase):
             patch.dict(sys.modules, {"PySide6.QtCore": core, "PySide6.QtWidgets": widgets}),
             patch.object(app_runtime, "SingleInstanceGuard", return_value=instance_guard),
             patch.object(app_runtime, "send_wake_signal", return_value=True) as wake,
-            patch.object(app_runtime, "MainWindow") as window,
+            patch.object(app_runtime, "create_main_window") as window,
         ):
             self.assertIsNone(app_runtime.run_app())
         instance_guard.acquire.assert_called_once_with()
@@ -130,7 +130,7 @@ class AppRuntimeContractTests(unittest.TestCase):
             ) as record_capabilities,
             patch.object(app_runtime, "build_stylesheet", return_value="QSS"),
             patch.object(app_runtime, "load_dashboard_state", return_value="STATE"),
-            patch.object(app_runtime, "MainWindow", return_value=window) as window_factory,
+            patch.object(app_runtime, "create_main_window", return_value=window) as window_factory,
             patch.object(app_runtime, "WakeServer", wake_factory),
             patch.object(
                 app_runtime,

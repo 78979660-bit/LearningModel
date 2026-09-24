@@ -9,6 +9,12 @@ from html import unescape
 from pathlib import Path
 from xml.etree import ElementTree
 
+from study_app.capabilities import (
+    TesseractRuntime,
+    find_tesseract_executable,
+    resolve_tesseract_runtime,
+)
+
 
 MAX_FILE_CHARS = 20000
 MAX_PDF_PAGES = 24
@@ -139,46 +145,41 @@ def _extract_office_zip_text(path: Path, max_chars: int) -> str:
 
 
 def _extract_image_text(path: Path, max_chars: int) -> tuple[str, str]:
-    executable = find_tesseract_executable()
+    try:
+        runtime = resolve_tesseract_runtime()
+    except RuntimeError as error:
+        return "", f"{error}；图片 OCR 不可用，已保留文件路径。"
     try:
         import pytesseract
         from PIL import Image
     except ImportError:
-        if executable:
-            return _extract_image_text_with_cli(path, executable, max_chars)
-        return "", "图片 OCR 依赖未安装，且未找到 Tesseract 引擎；已保留文件路径。"
+        return _extract_image_text_with_cli(path, runtime, max_chars)
 
     try:
-        if executable:
-            pytesseract.pytesseract.tesseract_cmd = str(executable)
+        pytesseract.pytesseract.tesseract_cmd = str(runtime.executable)
         image = preprocess_image_for_ocr(Image.open(path))
-        text = pytesseract.image_to_string(image, lang="chi_sim+eng", config="--psm 6")
-    except Exception as error:
-        if executable:
-            return _extract_image_text_with_cli(path, executable, max_chars)
-        return "", f"图片 OCR 失败：{error}"
+        text = pytesseract.image_to_string(
+            image,
+            lang=runtime.language,
+            config=f'--psm 6 --tessdata-dir "{runtime.tessdata}"',
+        )
+    except Exception:
+        return _extract_image_text_with_cli(path, runtime, max_chars)
     return normalize_whitespace(text)[:max_chars], ""
 
 
-def find_tesseract_executable() -> Path | None:
-    candidates = [
-        Path(r"C:\Program Files\Tesseract-OCR\tesseract.exe"),
-        Path(r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe"),
-    ]
-    for candidate in candidates:
-        if candidate.exists():
-            return candidate
-    return None
-
-
-def _extract_image_text_with_cli(path: Path, executable: Path, max_chars: int) -> tuple[str, str]:
+def _extract_image_text_with_cli(path: Path, runtime: TesseractRuntime, max_chars: int) -> tuple[str, str]:
     ocr_path = path
     temp_path = None
     try:
         temp_path = preprocess_image_file_for_ocr(path)
         ocr_path = temp_path or path
         completed = subprocess.run(
-            [str(executable), str(ocr_path), "stdout", "-l", "chi_sim+eng", "--psm", "6"],
+            [
+                str(runtime.executable), str(ocr_path), "stdout",
+                "--tessdata-dir", str(runtime.tessdata),
+                "-l", runtime.language, "--psm", "6",
+            ],
             check=False,
             capture_output=True,
             text=True,

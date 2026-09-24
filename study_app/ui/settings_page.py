@@ -181,6 +181,20 @@ def settings_page():
         checkbox = QCheckBox(label)
         checkbox.setChecked(key in settings.enabled_features)
         feature_inputs[key] = checkbox
+
+    record_subfeatures = ("error_classifier", "knowledge_mapping", "difficulty_calibration")
+
+    def sync_record_subfeature_availability():
+        parser_selected = (
+            feature_inputs["record_parser"].isChecked()
+            or feature_inputs["attachment_parser"].isChecked()
+        )
+        for key in record_subfeatures:
+            feature_inputs[key].setEnabled(parser_selected)
+
+    feature_inputs["record_parser"].toggled.connect(sync_record_subfeature_availability)
+    feature_inputs["attachment_parser"].toggled.connect(sync_record_subfeature_availability)
+    sync_record_subfeature_availability()
     llm_status = QLabel(provider_status(settings))
     llm_status.setObjectName("StatusLabel")
     llm_status.setWordWrap(True)
@@ -203,7 +217,14 @@ def settings_page():
     llm_form.addWidget(upload_images_input)
     llm_form.addWidget(upload_pdfs_input)
     llm_form.addWidget(QLabel("允许使用 LLM 增强的功能"))
-    for checkbox in feature_inputs.values():
+    for key, checkbox in feature_inputs.items():
+        if key == "error_classifier":
+            feature_note = QLabel(
+                "以下三项仅控制云端记录/附件解析。关闭后，本地规则仍可能补齐错因类别和难度。"
+            )
+            feature_note.setObjectName("Muted")
+            feature_note.setWordWrap(True)
+            llm_form.addWidget(feature_note)
         llm_form.addWidget(checkbox)
 
     llm_actions = QHBoxLayout()

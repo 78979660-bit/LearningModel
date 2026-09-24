@@ -41,6 +41,27 @@ class RecordEditorContractTests(unittest.TestCase):
         for name in ("ACTIVITY_OPTIONS", "SOURCE_OPTIONS", "AddRecordDialog", "add_record_page"):
             self.assertIs(getattr(main_window, name), getattr(record_editor, name))
 
+    def test_record_editor_factory_reuses_qt_type_without_sharing_form_inputs(self) -> None:
+        from PySide6.QtWidgets import QWidget
+
+        from study_app.ui import record_editor
+
+        first_saved = Mock()
+        second_saved = Mock()
+        with patch("study_app.data.database.list_module_names", return_value=[]):
+            first = record_editor.AddRecordDialog(None, first_saved, ("数学",))
+            second = record_editor.create_record_editor(None, second_saved, ("物理",))
+        self.assertIs(record_editor.AddRecordDialog, record_editor.create_record_editor)
+        self.assertIs(type(first), type(second))
+        self.assertIs(type(first), record_editor._RecordEditorType.build())
+        self.assertIsInstance(first, QWidget)
+        self.assertIs(first.on_saved, first_saved)
+        self.assertIs(second.on_saved, second_saved)
+        self.assertEqual(first.subject_input.currentText(), "数学")
+        self.assertEqual(second.subject_input.currentText(), "物理")
+        first.deleteLater()
+        second.deleteLater()
+
     def test_editor_payload_and_save_callback_preserve_contract(self) -> None:
         from study_app.ui import record_editor
 
@@ -102,7 +123,7 @@ class RecordEditorContractTests(unittest.TestCase):
         fake_editor = QWidget()
         with (
             patch.object(record_editor, "record_subject_names", return_value=("计算机科学",)) as subjects,
-            patch.object(record_editor, "AddRecordDialog", return_value=fake_editor) as dialog,
+            patch.object(record_editor, "create_record_editor", return_value=fake_editor) as dialog,
         ):
             page = record_editor.add_record_page(callback, state)
         subjects.assert_called_once_with(state)

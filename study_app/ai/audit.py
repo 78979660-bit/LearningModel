@@ -7,7 +7,7 @@ import re
 from typing import Any
 
 from study_app.ai.llm_client import assert_can_call_llm, chat_completion_json
-from study_app.ai.providers import estimate_tokens, load_llm_settings
+from study_app.ai.providers import LLMSettings, estimate_tokens, load_llm_settings
 from study_app.data.database import record_llm_call_audit, update_llm_call_audit
 
 
@@ -181,13 +181,14 @@ def audited_chat_completion_json(
     upload_summary: dict[str, Any] | None = None,
     timeout_seconds: int | None = None,
     parent_audit_id: int | None = None,
+    settings: LLMSettings | None = None,
 ) -> AuditedJSON:
     """Call an LLM and persist a compact audit record.
 
     The audit deliberately stores only metadata and upload summaries, not the
     prompt body or model response.
     """
-    settings = load_llm_settings()
+    settings = settings or load_llm_settings()
     token_estimate = estimate_tokens(prompt)
     summary = upload_summary or {}
     audit_id = _record_audit_required(

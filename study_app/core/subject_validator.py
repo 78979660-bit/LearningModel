@@ -87,7 +87,7 @@ def validate_manifest(
     payload = candidate.payload
     issues: list[ValidationIssue] = []
     repository = SubjectCatalogRepository(db_path)
-    with repository._open() as connection:
+    with repository.transaction() as connection:
         evidence_rows = connection.execute(
             """
             SELECT evidence_id, physical_page, evidence_type, quality_status

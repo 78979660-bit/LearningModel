@@ -4,15 +4,13 @@ import hashlib
 import io
 import json
 import math
-import os
 import re
-import shutil
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Iterable
 
+from study_app.capabilities import resolve_tesseract_runtime
 from study_app.data.subject_repository import SubjectCatalogRepository
-from study_app.paths import TESSDATA_DIR
 
 
 COORDINATE_VERSION = "rotated-top-left-normalized-v1"
@@ -94,29 +92,8 @@ def _page_labels(path: Path, count: int) -> tuple[str, ...]:
 
 
 def _local_tesseract_runtime() -> tuple[Path, Path, str]:
-    executable_candidates = (
-        Path(value) if (value := shutil.which("tesseract")) else None,
-        Path(r"C:\Program Files\Tesseract-OCR\tesseract.exe"),
-        Path(r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe"),
-    )
-    executable = next(
-        (candidate for candidate in executable_candidates if candidate and candidate.is_file()),
-        None,
-    )
-    if executable is None:
-        raise RuntimeError("未找到本地 Tesseract 可执行文件")
-
-    managed_tessdata = TESSDATA_DIR
-    system_tessdata = executable.parent / "tessdata"
-    tessdata = (
-        managed_tessdata
-        if (managed_tessdata / "chi_sim.traineddata").is_file()
-        else system_tessdata
-    )
-    if not (tessdata / "chi_sim.traineddata").is_file():
-        raise RuntimeError("缺少简体中文 OCR 语言包 chi_sim")
-    language = "chi_sim+eng" if (tessdata / "eng.traineddata").is_file() else "chi_sim"
-    return executable, tessdata, language
+    runtime = resolve_tesseract_runtime()
+    return runtime.executable, runtime.tessdata, runtime.language
 
 
 def _default_ocr(png_bytes: bytes) -> OCRPage:
@@ -126,11 +103,11 @@ def _default_ocr(png_bytes: bytes) -> OCRPage:
 
         executable, tessdata, language = _local_tesseract_runtime()
         pytesseract.pytesseract.tesseract_cmd = str(executable)
-        os.environ["TESSDATA_PREFIX"] = str(tessdata)
         image = Image.open(io.BytesIO(png_bytes))
         data = pytesseract.image_to_data(
             image,
             lang=language,
+            config=f'--tessdata-dir "{tessdata}"',
             output_type=pytesseract.Output.DICT,
         )
     except Exception as error:
@@ -219,7 +196,7 @@ def process_registered_pdf(
             raise ValueError("page_numbers 不得包含重复页码")
         requested_pages = frozenset(normalized_pages)
     repository = SubjectCatalogRepository(db_path)
-    with repository._open() as connection:
+    with repository.transaction() as connection:
         parse = connection.execute(
             """
             SELECT parses.*, documents.file_path, documents.encrypted
@@ -261,7 +238,7 @@ def process_registered_pdf(
     try:
         for physical_page in pending:
             if cancel_check is not None and cancel_check():
-                with repository._open(readonly=False) as connection:
+                with repository.transaction(readonly=False) as connection:
                     connection.execute(
                         "UPDATE document_parses SET status = 'paused' WHERE parse_key = ?",
                         (parse_key,),
@@ -339,7 +316,7 @@ def process_registered_pdf(
                 page_label = labels[physical_page - 1]
                 printed = _printed_page(text)
                 text_hash = hashlib.sha256(text.encode("utf-8")).hexdigest()
-                with repository._open(readonly=False) as connection:
+                with repository.transaction(readonly=False) as connection:
                     connection.execute(
                         "DELETE FROM subject_evidence WHERE parse_key = ? AND physical_page = ?",
                         (parse_key, physical_page),
@@ -424,7 +401,7 @@ def process_registered_pdf(
                     )
                 processed.append(PageProcessResult(physical_page, status, route, len(chunks), quality))
             except Exception as error:
-                with repository._open(readonly=False) as connection:
+                with repository.transaction(readonly=False) as connection:
                     connection.execute(
                         """
                         UPDATE document_pages SET status='failed', error_message=?,
@@ -436,7 +413,7 @@ def process_registered_pdf(
                 processed.append(
                     PageProcessResult(physical_page, "failed", "none", 0, {"error": type(error).__name__})
                 )
-        with repository._open(readonly=False) as connection:
+        with repository.transaction(readonly=False) as connection:
             counts = dict(
                 connection.execute(
                     """

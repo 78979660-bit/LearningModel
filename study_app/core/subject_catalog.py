@@ -76,7 +76,7 @@ class CatalogSnapshot:
 
 def load_catalog_snapshot(db_path: Path | str) -> CatalogSnapshot:
     repository = SubjectCatalogRepository(db_path)
-    with repository._open() as connection:
+    with repository.transaction() as connection:
         connection.execute("BEGIN")
         revision_before = int(
             connection.execute(
@@ -213,7 +213,7 @@ def adopt_structure(
         raise ValueError("source_reference 必须是非空字符串")
     structure_version = STRUCTURE_KEY_PREFIX + uuid_factory().hex
     repository = SubjectCatalogRepository(db_path)
-    with repository._open(readonly=False) as connection:
+    with repository.transaction(readonly=False) as connection:
         module_keys = [validate_module_key(key) for key in modules]
         if len(module_keys) != len(set(module_keys)):
             raise ValueError("结构中存在重复 module_key")

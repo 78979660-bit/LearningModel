@@ -16,7 +16,7 @@ def load_subject_lifecycle_view(
     if actor_role not in {"viewer", "reviewer", "executor", "owner"}:
         raise ValueError("未知生命周期界面角色")
     repository = SubjectCatalogRepository(db_path)
-    with repository._open() as connection:
+    with repository.transaction(snapshot=True) as connection:
         revision = int(
             connection.execute(
                 "SELECT catalog_revision FROM subject_catalog_state WHERE singleton=1"

@@ -133,6 +133,41 @@ class SettingsPageContractTests(unittest.TestCase):
         self.assertIn("数据库检查结果：ok", texts)
         self.assertIn("状态:local", texts)
 
+    def test_saved_cloud_status_keeps_key_and_explains_record_subfeatures(self) -> None:
+        from PySide6.QtWidgets import QCheckBox, QLabel, QMessageBox, QPushButton
+        from study_app.ai import providers
+        from study_app.ui import settings_page
+
+        with (
+            patch.object(settings_page, "load_llm_settings", return_value=self.llm_settings()),
+            patch.object(settings_page, "list_llm_call_audits", return_value=[]),
+            patch.object(providers, "protect_secret", return_value="encrypted-test-key"),
+            patch.object(providers, "set_setting") as persist,
+            patch.object(QMessageBox, "information"),
+        ):
+            page = settings_page.settings_page()
+            content = page.widget()
+            checkboxes = {item.text(): item for item in content.findChildren(QCheckBox)}
+            self.assertFalse(checkboxes["记录解析：LLM 错因归类"].isEnabled())
+            checkboxes["新增记录智能解析"].setChecked(True)
+            self.assertTrue(checkboxes["记录解析：LLM 错因归类"].isEnabled())
+            checkboxes["记录解析：LLM 错因归类"].setChecked(True)
+            button = next(
+                item for item in content.findChildren(QPushButton)
+                if item.text() == "保存 LLM 设置"
+            )
+            button.click()
+            texts = "\n".join(label.text() for label in content.findChildren(QLabel))
+            page.close()
+
+        self.assertNotIn("尚未填写 API Key", texts)
+        self.assertIn("已启用 DeepSeek", texts)
+        self.assertIn("以下三项仅控制云端记录/附件解析", texts)
+        self.assertEqual(persist.call_args.args[1]["api_key_protected"], "encrypted-test-key")
+        self.assertEqual(set(persist.call_args.args[1]["enabled_features"]), {
+            "record_parser", "error_classifier", "daily_summary", "natural_query"
+        })
+
     def test_invalid_numeric_fields_and_backup_failures_are_observable(self) -> None:
         from PySide6.QtWidgets import QLineEdit, QMessageBox, QPushButton
         from study_app.ui import settings_page

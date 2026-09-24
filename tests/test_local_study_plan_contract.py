@@ -200,6 +200,26 @@ class LocalStudyPlanContractTests(unittest.TestCase):
         self.assertNotIn("高等数学", serialized)
         self.assertIn("计算机科学", serialized)
 
+    def test_subject_model_failure_is_visible_in_plan_evidence(self) -> None:
+        from study_app.core.local_study_plan import generate_study_plan
+
+        assignment = SimpleNamespace(
+            difficulty_score=60,
+            to_homework_text=lambda: "参考难度 60/100；题库模板 TEST-ACTIVE；题量 1 题。",
+        )
+        with (
+            patch("study_app.core.study_phase.get_subject_phase", return_value={}),
+            patch("study_app.core.study_phase.is_in_exam_scope", return_value=True),
+            patch("study_app.core.study_phase.load_learning_model", side_effect=OSError("damaged model")),
+            patch("study_app.core.local_study_plan._lowest_cs_oj_focus", return_value=None),
+            patch("study_app.core.study_plan_homework.generate_practice_assignment", return_value=assignment),
+            self.assertLogs("study_app.core.local_study_plan", level="ERROR") as captured,
+        ):
+            plan = generate_study_plan(self.state(), "计算机科学")
+
+        self.assertIn("学科模型读取失败，主模块掌握度暂不可用。", plan["evidence"])
+        self.assertIn("damaged model", "\n".join(captured.output))
+
     def test_facade_reexports_canonical_local_plan_functions_by_identity(self) -> None:
         from study_app.core import local_study_plan
         from study_app.ui import main_window

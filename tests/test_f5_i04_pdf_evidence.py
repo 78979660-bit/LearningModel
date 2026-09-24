@@ -201,6 +201,8 @@ def test_scanned_page_without_optional_ocr_is_reviewable_not_failed(tmp_path):
 
 
 def test_local_tesseract_runtime_prefers_managed_chinese_data(tmp_path, monkeypatch):
+    from study_app import capabilities
+
     executable = tmp_path / "Tesseract-OCR" / "tesseract.exe"
     executable.parent.mkdir()
     executable.write_bytes(b"fixture")
@@ -209,8 +211,9 @@ def test_local_tesseract_runtime_prefers_managed_chinese_data(tmp_path, monkeypa
     (tessdata / "chi_sim.traineddata").write_bytes(b"fixture")
     (tessdata / "eng.traineddata").write_bytes(b"fixture")
 
-    monkeypatch.setattr(subject_pdf_pipeline, "TESSDATA_DIR", tessdata)
-    monkeypatch.setattr(subject_pdf_pipeline.shutil, "which", lambda _name: str(executable))
+    monkeypatch.setattr(capabilities, "DATA_DIR", tmp_path / "unused-data")
+    monkeypatch.setattr(capabilities, "TESSDATA_DIR", tessdata)
+    monkeypatch.setattr(capabilities.shutil, "which", lambda _name: str(executable))
 
     resolved_executable, resolved_tessdata, language = (
         subject_pdf_pipeline._local_tesseract_runtime()

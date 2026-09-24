@@ -29,7 +29,7 @@ def request_historical_correction(
         raise ValueError("reason 和 actor 必须非空")
     identifier = correction_id or f"correction:{uuid.uuid4().hex}"
     repository = SubjectCatalogRepository(db_path)
-    with repository._open(readonly=False) as connection:
+    with repository.transaction(readonly=False) as connection:
         connection.execute("BEGIN IMMEDIATE")
         subject = connection.execute(
             "SELECT lifecycle_status FROM subject_catalog WHERE subject_key=?",
@@ -77,7 +77,7 @@ def apply_historical_correction(
     if not approver.strip():
         raise ValueError("approver 必须非空")
     repository = SubjectCatalogRepository(db_path)
-    with repository._open(readonly=False) as connection:
+    with repository.transaction(readonly=False) as connection:
         connection.execute("BEGIN IMMEDIATE")
         request = connection.execute(
             "SELECT * FROM historical_correction_requests WHERE correction_id=?",

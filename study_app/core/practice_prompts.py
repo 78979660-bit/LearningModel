@@ -139,14 +139,14 @@ def practice_distribution_guidance(homework: str, exercise_count: int) -> str:
         return "\n".join(lines)
     components = _extract_homework_components(homework)
     if not components:
-        return "- \u672a\u8bc6\u522b\u5230\u660e\u786e\u590d\u5408\u9898\u578b\uff1b\u8bf7\u6309\u9898\u5e93\u6a21\u677f\u8986\u76d6\u57fa\u7840\u3001\u4e2d\u7b49\u548c\u6613\u9519\u53d8\u5f0f\uff0c\u5e76\u4fdd\u6301\u96be\u5ea6\u63a5\u8fd1\u53c2\u8003\u96be\u5ea6\u3002"
+        return "- 未识别到明确复合题型；请按题库模板覆盖基础、中等和易错变式，并保持难度接近参考难度。"
     base = exercise_count // len(components)
     extra = exercise_count % len(components)
     lines = []
     for index, component in enumerate(components):
         count = base + (1 if index < extra else 0)
-        lines.append(f"- {component}\uff1a\u5efa\u8bae {count} \u9898")
-    lines.append("- \u82e5\u9898\u578b\u914d\u989d\u4e0e\u9898\u5e93\u6a21\u677f\u4e0d\u4e00\u81f4\uff0c\u4f18\u5148\u670d\u4ece\u5f53\u524d\u4f5c\u4e1a\u89c4\u683c\u548c\u8003\u8bd5\u8303\u56f4\u3002")
+        lines.append(f"- {component}：建议 {count} 题")
+    lines.append("- 若题型配额与题库模板不一致，优先服从当前作业规格和考试范围。")
     return "\n".join(lines)
 
 
@@ -247,12 +247,12 @@ def build_mock_exam_generation_prompt(state: DashboardState, subject: str, mode:
     elif subject == "化学原理":
         extra_rules.extend(
             [
-                "\u5316\u5b66\u539f\u7406\u6807\u51c6\u671f\u672b\u5377\u5fc5\u987b\u6309\u56fa\u5b9a\u9898\u578b\u7ed3\u6784\u7ec4\u5377\uff1a\u4e00\u3001\u5206\u6790\u76f8\u56fe 2 \u9898\uff0c\u6bcf\u9898 12 \u5206\uff1b\u4e8c\u3001\u63a8\u5bfc\u4e0e\u8bc1\u660e 4 \u9898\uff0c\u6bcf\u9898 4 \u5206\uff1b\u4e09\u3001\u7b80\u7b54\u9898 3 \u9898\uff0c\u5206\u503c 3+3+4\uff1b\u56db\u3001\u8ba1\u7b97\u9898 4 \u9898\uff0c\u5206\u503c 16+12+12+10\u3002",
-                "\u8303\u56f4\u9650\u5b9a\u4e3a\u7b2c 12\u300113 \u7ae0\uff1a\u76f8\u5e73\u8861/\u76f8\u56fe\u4e0e\u5316\u5b66\u53cd\u5e94\u52a8\u529b\u5b66\u3002",
-                "\u5fc5\u987b\u91cd\u70b9\u8986\u76d6\uff1a\u4f8b\u9898\u548c\u4e60\u9898\u4e2d\u7684\u6b65\u51b7\u66f2\u7ebf\u3001\u963f\u4f26\u5c3c\u4e4c\u65af\u516c\u5f0f\u3001\u76f8\u5f8b\u63a8\u5bfc\u4e0e\u5e94\u7528\u3001\u6c34-\u9152\u7cbe\u4e8c\u5143\u7cfb\u76f8\u56fe\u5e94\u7528\u3002",
-                "\u4e25\u683c\u7981\u6b62\u51fa\u73b0\uff1a\u8fc7\u6e21\u6001\u3001\u5149\u5316\u5b66\u53cd\u5e94\u3001\u5feb\u901f\u53cd\u5e94\u3001\u5f1b\u8c6b\u6cd5\u3001\u95ea\u5149\u5149\u89e3\u7b49\u8303\u56f4\u5916\u5185\u5bb9\u3002",
-                "\u76f8\u56fe\u5206\u6790\u9898\u4f18\u5148\u53c2\u8003\u6b65\u51b7\u66f2\u7ebf PDF \u79cd\u5b50\uff1aBi-Cd \u4f4e\u5171\u7194\u76f8\u56fe\u3001Sb-Cd \u6b65\u51b7\u66f2\u7ebf\u6570\u636e\u4f5c\u56fe\u3001Sn-Ag \u76f8\u56fe\u533a\u57df\u4e0e\u51b7\u5374\u66f2\u7ebf\u3002",
-                "\u540c\u4e00\u9876\u5c42\u9898\u578b\u5185\u4e0d\u5f97\u8fde\u7eed\u51fa\u73b0\u540c\u4e00\u5c0f\u9898\u578b\uff1b\u6807\u51c6\u5377\u4e2d\u7684 13 \u9898\u5e94\u81f3\u5c11\u8986\u76d6 8 \u4e2a\u4e0d\u540c\u5c0f\u9898\u578b\uff0c\u4f8b\u5982\u6b65\u51b7\u66f2\u7ebf\u3001\u6c34-\u9152\u7cbe\u4e8c\u5143\u7cfb\u3001\u76f8\u5f8b\u63a8\u5bfc\u3001\u7ec4\u5206\u6570/\u81ea\u7531\u5ea6\u3001Arrhenius\u3001\u79ef\u5206\u901f\u7387\u65b9\u7a0b\u3001\u534a\u8870\u671f\u3001Clausius-Clapeyron \u6216\u6760\u6746\u89c4\u5219\u3002",
+                "化学原理标准期末卷必须按固定题型结构组卷：一、分析相图 2 题，每题 12 分；二、推导与证明 4 题，每题 4 分；三、简答题 3 题，分值 3+3+4；四、计算题 4 题，分值 16+12+12+10。",
+                "范围限定为第 12、13 章：相平衡/相图与化学反应动力学。",
+                "必须重点覆盖：例题和习题中的步冷曲线、阿伦尼乌斯公式、相律推导与应用、水-酒精二元系相图应用。",
+                "严格禁止出现：过渡态、光化学反应、快速反应、弛豫法、闪光光解等范围外内容。",
+                "相图分析题优先参考步冷曲线 PDF 种子：Bi-Cd 低共熔相图、Sb-Cd 步冷曲线数据作图、Sn-Ag 相图区域与冷却曲线。",
+                "同一顶层题型内不得连续出现同一小题型；标准卷中的 13 题应至少覆盖 8 个不同小题型，例如步冷曲线、水-酒精二元系、相律推导、组分数/自由度、Arrhenius、积分速率方程、半衰期、Clausius-Clapeyron 或杠杆规则。",
             ]
         )
     elif subject == "大学物理学":
@@ -450,6 +450,7 @@ def build_oj_practice_list(
     exercise_count = extract_homework_exercise_count(homework, 3)
     topic_hint = _oj_topic_hint(topic or line)
     topic_hint = clean_field(topic_hint, "算法设计综合训练")
+    lookup_failed = False
     try:
         from study_app.data.practice_repository import find_practice_problems
 
@@ -461,11 +462,20 @@ def build_oj_practice_list(
             limit=max(2, min(5, exercise_count)),
         )
     except Exception:
+        LOGGER.exception("OJ practice problems could not be read for %s", topic_hint)
+        lookup_failed = True
         problems = []
+
+    if lookup_failed:
+        matching_status = "算法设计与 OJ 训练：题库读取失败，暂无法提供 LeetCode 官方原题清单。"
+    elif not problems:
+        matching_status = "算法设计与 OJ 训练：题库暂未匹配到 LeetCode 官方原题。"
+    else:
+        matching_status = "算法设计与 OJ 训练：系统已按题库与难度分数匹配 LeetCode 官方原题；无需让 LLM 生成题目。"
 
     lines = [
         "[PERSONAL_LEARNING_OS_OJ_LIST]",
-        "算法设计与 OJ 训练：系统已按题库与难度分数匹配 LeetCode 官方原题；无需让 LLM 生成题目。",
+        matching_status,
         f"学科：{clean_field(subject, '计算机科学')}",
         f"训练主题：{topic_hint}",
         f"目标参考难度：{target_difficulty:.0f}/100" if target_difficulty is not None else "目标参考难度：按当前计划自动匹配",
@@ -473,7 +483,10 @@ def build_oj_practice_list(
         "今日 LeetCode 原题清单：",
     ]
     if not problems:
-        lines.append("- 题库中暂未匹配到足够的 LeetCode 原题，请先补充该主题题库。")
+        if lookup_failed:
+            lines.append("- 题库读取失败，暂无法匹配 LeetCode 原题；请检查本地题库。")
+        else:
+            lines.append("- 题库中暂未匹配到足够的 LeetCode 原题，请先补充该主题题库。")
     for index, problem in enumerate(problems, start=1):
         raw = problem.get("raw") or {}
         number = raw.get("problem_number") or ""
@@ -509,6 +522,7 @@ def build_oj_practice_list(
 
 def recent_practice_context(subject: str, topic: str, state: DashboardState) -> str:
     lines: list[str] = []
+    lookup_warning = ""
     topic_keys = [part.strip() for part in topic.replace("/", " ").split() if len(part.strip()) >= 2]
     for item in state.memory_risks:
         item_text = f"{item.get('subject', '')} {item.get('topic', '')}"
@@ -537,7 +551,10 @@ def recent_practice_context(subject: str, topic: str, state: DashboardState) -> 
             if len(lines) >= 5:
                 break
     except Exception:
-        pass
+        LOGGER.exception("Recent practice records could not be read for %s / %s", subject, topic)
+        lookup_warning = "- 近期记录读取失败；暂无法判断相关错因。"
+    if lookup_warning:
+        return "\n".join([*lines[:4], lookup_warning])
     if not lines:
         return "- 暂无明确错因；请按模板生成覆盖基础、中等和易错点的变式题。"
     return "\n".join(lines[:5])
@@ -650,8 +667,8 @@ def practice_seed_context(
                         topic=topic,
                         target_difficulty=target_difficulty,
                         note=(
-                            f"\u51fa\u9898\u63d0\u793a\u9700\u8981 {desired_count} \u4e2a\u6837\u9898\u79cd\u5b50\uff0c"
-                            f"\u5b9e\u9645\u4ec5 {len(problems)} \u4e2a\uff1b\u672c\u6b21\u9898\u91cf {exercise_count}\u3002"
+                            f"出题提示需要 {desired_count} 个样题种子，"
+                            f"实际仅 {len(problems)} 个；本次题量 {exercise_count}。"
                         ),
                     )
                 except Exception as error:
@@ -663,22 +680,27 @@ def practice_seed_context(
                     else "待收集登记失败"
                 )
                 lines.append(
-                    f"- \u79cd\u5b50\u6570\u91cf\u4e0d\u8db3\uff1a\u672c\u6b21\u9898\u91cf {exercise_count} \u9053\uff0c"
-                    f"\u5efa\u8bae\u81f3\u5c11\u53c2\u8003 {desired_count} \u4e2a\u6837\u9898\uff0c\u5f53\u524d\u4ec5 {len(problems)} \u4e2a\u3002"
-                    f"{backlog_status}\uff1b\u751f\u6210\u65f6\u8bf7\u4f18\u5148\u6309\u9898\u578b\u914d\u989d\u6269\u5c55\u540c\u578b\u53d8\u5f0f\uff0c\u4e0d\u8981\u8d85\u51fa\u8003\u8bd5\u8303\u56f4\u3002"
+                    f"- 种子数量不足：本次题量 {exercise_count} 道，"
+                    f"建议至少参考 {desired_count} 个样题，当前仅 {len(problems)} 个。"
+                    f"{backlog_status}；生成时请优先按题型配额扩展同型变式，不要超出考试范围。"
                 )
             return "\n".join(lines)
-        from study_app.data.collection_backlog import register_collection_gap
+        try:
+            from study_app.data.collection_backlog import register_collection_gap
 
-        register_collection_gap(
-            subject=subject,
-            template_id=template_id,
-            topic=topic,
-            target_difficulty=target_difficulty,
-            note=f"\u672a\u627e\u5230\u6837\u9898\u79cd\u5b50\uff1b\u672c\u6b21\u9898\u91cf {exercise_count}\uff0c\u5efa\u8bae\u81f3\u5c11 {desired_count} \u4e2a\u79cd\u5b50\u3002",
-        )
+            register_collection_gap(
+                subject=subject,
+                template_id=template_id,
+                topic=topic,
+                target_difficulty=target_difficulty,
+                note=f"未找到样题种子；本次题量 {exercise_count}，建议至少 {desired_count} 个种子。",
+            )
+        except Exception:
+            LOGGER.exception("Failed to register missing practice collection gap")
+            return "- 暂无同模板样题种子；待收集登记失败，请严格按模板说明生成变式题。"
     except Exception:
-        pass
+        LOGGER.exception("Practice seed context could not be read or built for %s", template_id)
+        return "- 样题种子读取或处理失败；请检查题库，暂按模板说明生成变式题。"
     return "- 暂无同模板样题种子；请严格按模板说明生成变式题。"
 
 
