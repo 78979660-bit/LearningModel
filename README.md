@@ -8,13 +8,23 @@
 
 本项目自身代码采用 **GNU AGPL v3.0（AGPL-3.0-only）**，详见 [LICENSE](LICENSE) 和 [NOTICE.md](NOTICE.md)。第三方组件保留各自的许可。
 
-## 当前发布状态
+## 下载与体验
 
-源码已按开源方向整理。0.1.0 安装包目前为 **Release 草稿**，尚无公开下载版本。签名、干净 Windows 环境验收和完整二进制分发材料仍待完成；请勿将源码公开理解为安装包已经通过全部发布验收。
+学习模型的第一个公开测试版 **v0.1.0** 已发布，欢迎下载体验！
 
-## 从源码启动
+👉 [下载 Windows x64 安装包](https://github.com/78979660-bit/LearningModel/releases/download/v0.1.0/LearningModel-Setup-0.1.0-x64.exe)
 
-推荐 Windows x64。现有构建记录使用 CPython 3.14.5 x64；其他版本尚未验证。以下命令在 PowerShell 中运行：
+安装后，可在应用内引入学科，开始安排学习计划。
+
+这是一个仍在成长中的项目。目前已在 Windows 11 虚拟机中验证主要使用流程，安装包尚未进行代码签名。
+
+[查看更新内容、验收范围与全部下载文件](https://github.com/78979660-bit/LearningModel/releases/tag/v0.1.0)
+
+## 从源码运行
+
+如果你想参与开发，或看看学习模型是如何工作的，可以从源码启动。
+
+当前验证环境为 Windows x64、CPython 3.14.5。在 PowerShell 中执行：
 
 ```powershell
 git clone https://github.com/78979660-bit/LearningModel.git
@@ -24,9 +34,9 @@ py -3.14 -m venv .venv-build
 & .\.venv-build\Scripts\python.exe run_study_app.pyw
 ```
 
-首次启动使用空记录和干净默认模型。通过应用内学科管理引入学科。用户数据保存在 `%LOCALAPPDATA%\LearningModel`，不应提交到 Git。
+首次启动使用空记录和干净默认模型。通过应用内学科管理引入学科。用户数据保存在 `%LOCALAPPDATA%\LearningModel`。
 
-OCR 需要另外配置 Tesseract；ChatGPT 桌面桥接需要对应桌面应用；AI 服务密钥由用户自行设置。源码不包含密钥或个人学习记录。
+OCR 需要另外配置 Tesseract；AI 服务密钥由用户自行设置。源码不包含密钥或个人学习记录。
 
 ## 测试与构建
 
