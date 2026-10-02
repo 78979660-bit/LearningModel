@@ -21,7 +21,15 @@ def collect(archives, output):
     output.mkdir(parents=True, exist_ok=True)
     records = []
     for item in manifest['archives']:
-        path = archives / item['filename']
+        filename = item['filename']
+        if (not isinstance(filename, str) or not filename
+                or Path(filename).name != filename
+                or '/' in filename or '\\' in filename or ':' in filename
+                or filename in {'.', '..'}):
+            raise ValueError('Unsafe archive filename')
+        path = (archives / filename).resolve()
+        if path.parent != archives.resolve():
+            raise ValueError('Archive path escapes archive directory')
         with path.open('rb') as stream:
             if hashlib.file_digest(stream, 'sha256').hexdigest() != item['sha256']:
                 raise ValueError('Archive hash mismatch: ' + path.name)
