@@ -56,6 +56,37 @@ python -B -m pytest -q -p no:cacheprovider --junitxml full-test-results.xml
 
 JUnit 为 1420 项，0 失败、0 错误、0 跳过。297 个 Python 文件语法检查通过；Git 使用 `cr-at-eol` 识别仓库保留的 CRLF 后，差异空白检查通过。3 个警告均为现有 ChatGPT bridge 中 `datetime.utcnow()` 的弃用警告。
 
+## 追加修复：许可证输出路径边界
+
+2026-10-02 在同一维护分支的 `ef5878a4160eda054adbbb2b0b608d5da80c12e0` 上继续核验。独立复审发现，前一轮只验证归档文件名不足以保护输出路径：清单中的 `...zip` 是单一文件名，但去掉扩展名后变成 `..`；其中的 `LICENSE` 会写入输出目录的父目录，并覆盖已有文件。
+
+本次追加修复：
+
+- 分别验证清单文件名和去掉扩展名后的输出前缀；在打开归档之前拒绝空值、点目录和危险前缀。
+- 归档名、输出前缀及成员路径的每一级均使用跨平台名称校验，拒绝 Windows 设备名（含带扩展名及上标数字的 COM/LPT 名）、尾随点/空格、控制字符、路径分隔符、ADS 冒号及其他 Windows 非法字符。仍支持普通 ZIP/tar、`./` 前缀及重复 `/`；tar 的链接条目不解包。
+- 在创建输出目录前检查已有父目录；每次写入都重新检查目录与目标文件，并要求解析后的目标位于确定的输出根目录中。拒绝符号链接、Windows reparse point（包括 junction）、非普通目标文件及多链接文件。
+- 许可证文本与 `NOTICE-MANIFEST.json` 共用同目录临时文件加原子替换流程，不直接截断已有文件；回归测试逐项确认目录外已有内容保持不变。
+
+新增 `tests/test_source_notices_output_paths.py` 共 123 个参数化用例。在原维护提交的提取器上为 **102 失败、20 通过、1 跳过**；修复后为 **122 通过、1 跳过**。连同原有许可证测试及四类维护回归测试，专项验证为 **146 通过、1 跳过**。跳过项需要原生 Windows junction，云端 Linux 不能替代此项；跨平台 reparse 属性分支模拟测试已通过。现有来源清单中的归档名与 371 条已记录许可证输出路径也全部通过新名称规则。
+
+本轮环境为 **Linux x86-64 云电脑、CPython 3.12.14**，独立虚拟环境完整安装当前构建锁文件，`pip check` 通过。没有使用离线桌面的未推送补丁，也未把历史 Windows 测试结果当作本次追加修改的验证结果。
+
+```text
+QT_QPA_PLATFORM=offscreen python -B -m pytest -q -p no:cacheprovider --junitxml=full.xml
+修复后：1255 passed, 5 failed, 4 skipped, 3 warnings, 279 subtests passed
+原维护提交：1133 passed, 5 failed, 3 skipped, 3 warnings, 279 subtests passed
+```
+
+两次全量运行使用同一云端环境和锁定依赖，5 个失败的测试 ID 与失败消息完全一致，均不涉及许可证提取器：
+
+- `AIProviderMigrationTests.test_legacy_explicit_feature_consent_is_preserved`：DPAPI 仅支持 Windows。
+- `ReleaseSingleInstanceTests.test_existing_mutex_closes_duplicate_handle_and_reports_secondary` 和 `test_mutex_uses_fixed_learning_model_identity_and_releases_handle`：Linux 的 `ctypes` 不提供测试所模拟的 `WinDLL` 属性。
+- `LocalPracticePDFRenderingTests.test_long_statement_flows_across_pages_and_keeps_footer_page_numbers` 和 `test_question_and_answer_pdfs_are_separate_structurally_valid_and_deterministic`：此 Linux 镜像自动选择的 Noto CJK TTC 使用 ReportLab 不支持的 PostScript 轮廓。
+
+原有 3 个跳过项为原生 Windows mutex/DPAPI 验证，追加 1 个跳过项为 junction。3 个警告仍为已有 `datetime.utcnow()` 弃用警告。**本轮不是云端全量全绿，也尚未完成原生 Windows 复测**；没有为得到绿色结果而修改无关代码或屏蔽这些失败。298 个 `.py` 与 1 个 `.pyw` 文件语法解析通过，差异空白检查通过。
+
+输出目录应由运行者独占，不能由不可信进程并发修改。此次防护覆盖恶意归档名/成员以及预先存在的链接；跨平台的路径检查和原子文件替换不等同于对恶意并发父目录交换的无竞态沙箱。修复没有重建安装包、合并或发布，也没有新增测试 CI。
+
 ## 现有安装包
 
 [v0.1.0 公开预发布](https://github.com/78979660-bit/LearningModel/releases/tag/v0.1.0)的安装包及项目源代码 ZIP 对应 `8aeaf92bc786adc517b8d2569b291cdad79243c1`，早于 PR2 和本轮维护。此维护分支与依赖更新不会改变已经下载的安装包。旧安装包需要单独核验打包组件、评估风险并重建验收，本轮没有拆包或发布新版。原发布的源码、第三方源包、许可证材料和校验值均保持原样；未来构建应重新收集与新依赖对应的材料并完成验收。
