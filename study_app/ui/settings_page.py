@@ -190,6 +190,8 @@ def settings_page():
             or feature_inputs["attachment_parser"].isChecked()
         )
         for key in record_subfeatures:
+            if not parser_selected:
+                feature_inputs[key].setChecked(False)
             feature_inputs[key].setEnabled(parser_selected)
 
     feature_inputs["record_parser"].toggled.connect(sync_record_subfeature_availability)
@@ -260,7 +262,8 @@ def settings_page():
             allow_upload_images=upload_images_input.isChecked(),
             allow_upload_pdfs=upload_pdfs_input.isChecked(),
             enabled_features=tuple(
-                key for key, checkbox in feature_inputs.items() if checkbox.isChecked()
+                key for key, checkbox in feature_inputs.items()
+                if checkbox.isChecked() and checkbox.isEnabled()
             ),
         )
         save_llm_settings(payload)

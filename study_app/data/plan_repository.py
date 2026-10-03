@@ -344,6 +344,10 @@ def create_budgeted_day_plan(
     path = require_initialized_database(db_path)
     _require_budget_plan_schema(path)
     with connect(path) as connection:
+        connection.execute("BEGIN IMMEDIATE")
+        for row in rows:
+            if row["section_key"] in {"selected", "completed"}:
+                require_f5_subject_write_allowed(connection, row["subject_id"])
         old_states = {
             row["task_id"]: (row["checked"], row["result"])
             for row in connection.execute(
