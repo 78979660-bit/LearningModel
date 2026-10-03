@@ -70,7 +70,7 @@ def main() -> None:
     write_json(verification / "source-inputs-0.1.1.json", {
         "installer_sha256": installer_hash,
         "base_commit": subprocess.check_output(GIT + ["rev-parse", "HEAD"], cwd=ROOT, text=True).strip(),
-        "source_state": "local working tree including uncommitted corrections",
+        "source_state": "release working tree; runtime input hashes recorded below",
         "files": [{"path": name, "sha256": digest(ROOT / name)} for name in sorted(inputs)],
     })
     write_json(verification / "native-binary-inventory-0.1.1.json", {

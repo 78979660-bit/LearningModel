@@ -3,7 +3,7 @@
 ## 环境
 
 - Windows x64，PowerShell 7。
-- CPython 3.14.5 x64（公开 v0.1.0 安装包的构建版本）。
+- CPython 3.14.5 x64（公开 v0.1.0 和 v0.1.1 安装包的构建版本）。
 - `requirements-build.lock.txt` 中固定的依赖。
 - Inno Setup 7.1.0；安装器使用其 ChineseSimplified 语言文件。
 
@@ -44,9 +44,13 @@ Get-FileHash -LiteralPath .\release\artifacts\LearningModel-Setup-0.1.1-x64.exe 
 
 脚本仍拒绝 `-PublicRelease`；这个开关不表示 GitHub Release 的公开状态。上述命令用于本地构建，生成的新文件需要单独测试和核对，不能直接视为与已发布安装包相同。
 
-## 与公开 v0.1.0 安装包的关系
+## 与公开 v0.1.1 安装包的关系
 
-当前工作树构建版本为 **0.1.1**。本轮验收记录见 [0.1.1 打包验收](RELEASE_ACCEPTANCE_0.1.1.md)，交付源码 ZIP 包含未提交的后续修正。以下 0.1.0 提交关系仅用于复现旧公开安装包。
+公开 [v0.1.1 预发布测试版](https://github.com/78979660-bit/LearningModel/releases/tag/v0.1.1)提供 Windows 安装包、对应源码 ZIP、第三方源码与许可、验证证据和 Windows 验收工具。使用 `git checkout v0.1.1` 或 `LearningModel-0.1.1-source.zip` 获取对应源码；`main` 是持续更新的开发主线。
+
+运行时源码包含提交 `69c66fb` 中的版本同步和后续修正；发布标签另包含下载入口与发布文档更新。最终安装包中的 123 个项目 Python 输入与附件清单逐项核对一致。文档更新未修改已验收安装包，本轮结果见 [0.1.1 打包验收](RELEASE_ACCEPTANCE_0.1.1.md)。这些记录不构成逐字节可重复构建证明。
+
+## 与公开 v0.1.0 安装包的关系
 
 [公开预发布版本](https://github.com/78979660-bit/LearningModel/releases/tag/v0.1.0)的安装包从[源码提交 `8aeaf92`](https://github.com/78979660-bit/LearningModel/tree/8aeaf92bc786adc517b8d2569b291cdad79243c1)重新构建并完成所列验收。若要核对该安装包，请先切换到此提交，再参照其中的构建材料；发布附件另有对应源码 ZIP、第三方材料和 SHA-256 校验值。
 
