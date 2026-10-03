@@ -8,6 +8,8 @@ redistribution blocker.
 from __future__ import annotations
 
 import argparse
+import base64
+import hashlib
 from importlib import metadata
 import json
 from pathlib import Path, PurePosixPath
@@ -133,7 +135,12 @@ def collect_distribution(
             continue
         source = Path(distribution.locate_file(item)).resolve()
         if not source.is_file():
-            continue
+            raise RuntimeError(f'{requested_name}: recorded license file is missing')
+        if item.hash is None or item.hash.mode != 'sha256':
+            raise RuntimeError(f'{requested_name}: license file lacks SHA256 wheel RECORD evidence')
+        expected = base64.urlsafe_b64decode(item.hash.value + '=' * (-len(item.hash.value) % 4)).hex()
+        if hashlib.sha256(source.read_bytes()).hexdigest() != expected:
+            raise RuntimeError(f'{requested_name}: license file differs from wheel RECORD')
         relative = relative_license_path(pure_path)
         destination = package_dir / relative
         destination_key = str(destination).casefold()
@@ -159,6 +166,10 @@ def collect_distribution(
         "declared_license": license_description(distribution),
         "homepage": distribution.metadata.get("Home-page", ""),
         "license_files": copied,
+        "license_file_sha256": {
+            name: hashlib.sha256((output_root / name).read_bytes()).hexdigest()
+            for name in copied
+        },
     }
 
 
@@ -181,6 +192,14 @@ def parse_arguments(argv: list[str]) -> argparse.Namespace:
         action="store_true",
         help="also collect PyInstaller and pytest license files",
     )
+    parser.add_argument('--distribution-policy', type=Path)
+    parser.add_argument('--project-root', type=Path, default=Path(__file__).resolve().parent.parent)
+    parser.add_argument('--source-archives', type=Path)
+    parser.add_argument('--source-notices', type=Path)
+    parser.add_argument('--project-source', type=Path)
+    parser.add_argument('--require-release-materials', action='store_true',
+                        help='fail if the explicit policy and corresponding materials cannot be verified')
+    parser.add_argument('--reviewed-commit', help='explicitly reviewed repository source commit')
     return parser.parse_args(argv)
 
 
@@ -211,19 +230,26 @@ def main(argv: list[str] | None = None) -> int:
             collect_distribution(name, version, output_root, scope=scope)
         )
 
+    if __package__:
+        from .release_material_policy import evaluate_materials
+    else:
+        from release_material_policy import evaluate_materials
+    policy_path = options.distribution_policy or options.project_root / 'release/distribution-policy.json'
+    assessment = evaluate_materials(
+        project_root=options.project_root, lock_file=lock_file, policy_path=policy_path,
+        license_root=output_root, distributions=records,
+        source_archives=options.source_archives, source_notices=options.source_notices,
+        project_source=options.project_source,
+        reviewed_commit=options.reviewed_commit,
+    )
     manifest = {
         "format_version": 1,
         "source_lock": lock_file.name,
         "distributions": records,
+        "distribution_assessment": assessment,
         "release_blockers": [
-            {
-                "component": "PyMuPDF",
-                "status": "unresolved",
-                "reason": (
-                    "Public redistribution requires a documented AGPL compliance "
-                    "decision or an applicable Artifex commercial license."
-                ),
-            }
+            {"component": "distribution materials", "status": "blocked", "reason": reason}
+            for reason in assessment['reasons']
         ],
     }
     manifest_path = output_root / "LICENSE-MANIFEST.json"
@@ -232,7 +258,12 @@ def main(argv: list[str] | None = None) -> int:
         encoding="utf-8",
     )
     print(f"Collected {len(records)} distributions into {output_root}")
-    print("PUBLIC RELEASE BLOCKED: PyMuPDF licensing decision is unresolved.")
+    if assessment['status'] != 'materials_verified':
+        print('PUBLIC RELEASE MATERIALS BLOCKED: ' + '; '.join(assessment['reasons']))
+        if options.require_release_materials:
+            return 1
+    else:
+        print('Corresponding materials verified under documented AGPL route; not a legal attestation.')
     return 0
 
 

@@ -429,6 +429,13 @@ if ($freezeExitCode -ne 0) {
     (($freezeOutput -join "`n").TrimEnd() + "`n"),
     [Text.UTF8Encoding]::new($false)
 )
+$testEvidence = $null
+if (-not $SkipTests) {
+    $testEvidenceArgs = @('-c', 'import json,sys; from pathlib import Path; from tools.finalize_release_0_1_1 import regression_build_fields; print(json.dumps(regression_build_fields(Path(sys.argv[1]))))', (Join-Path $projectRoot 'build\release-tests.xml'))
+    $testEvidenceJson = & $PythonPath @testEvidenceArgs
+    if ($LASTEXITCODE -ne 0) { throw 'Could not record actual regression XML counts' }
+    $testEvidence = ($testEvidenceJson -join "`n") | ConvertFrom-Json
+}
 $buildRecord = [ordered]@{
     application = 'LearningModel'
     version = $Version
@@ -436,6 +443,9 @@ $buildRecord = [ordered]@{
     architecture = 'x64'
     built_at = (Get-Date).ToUniversalTime().ToString('o')
     tests_skipped = [bool]$SkipTests
+    passed_subtests = if ($null -ne $testEvidence) { [int]$testEvidence.passed_subtests } else { $null }
+    primary_test_cases = if ($null -ne $testEvidence) { [int]$testEvidence.primary_test_cases } else { $null }
+    test_report_sha256 = if ($null -ne $testEvidence) { [string]$testEvidence.test_report_sha256 } else { $null }
     installer_skipped = [bool]$SkipInstaller
     signed = -not [string]::IsNullOrWhiteSpace($SignToolPath)
     public_release = $false
