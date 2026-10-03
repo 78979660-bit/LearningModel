@@ -92,3 +92,25 @@ QT_QPA_PLATFORM=offscreen python -B -m pytest -q -p no:cacheprovider --junitxml=
 [v0.1.0 公开预发布](https://github.com/78979660-bit/LearningModel/releases/tag/v0.1.0)的安装包及项目源代码 ZIP 对应 `8aeaf92bc786adc517b8d2569b291cdad79243c1`，早于 PR2 和本轮维护。此维护分支与依赖更新不会改变已经下载的安装包。旧安装包需要单独核验打包组件、评估风险并重建验收，本轮没有拆包或发布新版。原发布的源码、第三方源包、许可证材料和校验值均保持原样；未来构建应重新收集与新依赖对应的材料并完成验收。
 
 检查未启用、关闭或削弱安全功能，未合并或发布新版。Dependabot 和测试 CI 的配置缺口需要另行授权维护。
+
+
+## 2026-10-03：合入 v0.1.1 主线并复测
+
+本次以远端维护分支 `6e9f6139f1d5ce3e9c5014200ecf587d42ab00c6` 为起点，合入新获取的 `main` / `v0.1.1` 提交 `f8a4d4a97409622290d98959906b91388d3c812c`。仅 `requirements-build.lock.txt` 的说明头发生文本冲突；解决后保留 v0.1.1 版本语境、Pillow 12.3.0 和 pip 26.2.1，并明确已发布安装包使用各自发布源码提交中的锁文件。主线的计划、仪表盘、学科路由及发布材料均保留；四类维护修复与许可证输出保护源码和回归测试与维护分支原样一致。
+
+验证环境：Linux x86-64 云电脑、CPython 3.12.14、`QT_QPA_PLATFORM=offscreen`，同一虚拟环境中的 21 个版本与合并后的锁文件全部一致，`pip check` 通过。主线对照也使用同一环境，目的是隔离源码合并带来的回归，并非验证主线旧依赖组合。
+
+- 许可证、维护回归及主线改动专项：176 passed、1 skipped、18 subtests passed。
+- 加入发布运行时测试的较广专项：182 passed、2 failed、2 skipped、18 subtests passed；两个失败均为 Linux 缺少 `ctypes.WinDLL`，也出现在主线对照中。
+- 合并后全量：1261 passed、5 failed、4 skipped、3 warnings、279 subtests passed。
+- 新获取主线全量对照：1119 passed、5 failed、3 skipped、3 warnings、279 subtests passed。
+- 两次全量的五个失败 ID 和消息逐项完全一致：1 项 Windows DPAPI、2 项 `ctypes.WinDLL`、2 项 Linux Noto CJK TTC 字体加载；未新增合并回归，未屏蔽或修改这些测试。
+- 301 个 `.py` / `.pyw` 文件语法检查通过；Git 差异空白检查通过；没有未解决的冲突条目。
+
+全量命令（分别在合并树与主线独立工作树执行）：
+
+```text
+QT_QPA_PLATFORM=offscreen python -B -m pytest -q -p no:cacheprovider --junitxml=results.xml
+```
+
+本轮没有原生 Windows 复测，因此不能称为全量全绿，也不能替代 Windows junction、DPAPI、mutex、安装包和真实 OCR / 外部 AI 验收。未合并 PR、发布或重建安装包。已发布的 v0.1.1 包不会随此次源码合并而更新，仍需另行决定是否重建及验收。

@@ -132,6 +132,33 @@ def test_sqlite_directory_overrides_stale_json_but_preserves_unmigrated_paramete
     assert item["modules"][0]["topics"][0]["mastery"] == 0.61
 
 
+def test_catalog_subject_without_structure_preserves_legacy_model_modules(catalog):
+    db_path, repo, *_ = catalog
+    subject = repo.create_subject("未采用结构")
+    model = {
+        "subjects": [{
+            "name": "未采用结构",
+            "mastery": 0.58,
+            "modules": [{
+                "name": "基础模块",
+                "mastery": 0.58,
+                "topics": [{"name": "基础知识点", "mastery": 0.58}],
+            }],
+        }],
+    }
+
+    projected = overlay_model_with_catalog(model, load_catalog_snapshot(db_path))
+    item = next(item for item in projected["subjects"] if item["subject_key"] == subject.subject_key)
+    assert item["structure_version"] is None
+    assert item["modules"] == model["subjects"][0]["modules"]
+
+    # An explicitly adopted empty structure is authoritative and stays empty.
+    adopt_structure(db_path, subject.subject_key, {}, source_reference="test:empty")
+    projected = overlay_model_with_catalog(model, load_catalog_snapshot(db_path))
+    item = next(item for item in projected["subjects"] if item["subject_key"] == subject.subject_key)
+    assert item["modules"] == []
+
+
 def test_projection_can_be_deleted_and_rebuilt_equivalently(catalog, tmp_path):
     db_path, *_ = catalog
     projection = tmp_path / "subject_catalog_projection.json"

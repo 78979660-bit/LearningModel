@@ -3,14 +3,20 @@
 param(
     [ValidateSet('Preflight', 'Install', 'Finish')]
     [string]$Phase = 'Preflight',
-    [string]$KitDirectory = ''
+    [string]$KitDirectory = '',
+    [ValidatePattern('^\d+\.\d+\.\d+$')]
+    [string]$Version = '0.1.1'
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 if ([string]::IsNullOrWhiteSpace($KitDirectory)) { $KitDirectory = Split-Path -Parent $MyInvocation.MyCommand.Path }
 $kit = (Resolve-Path -LiteralPath $KitDirectory).Path
-$installer = Join-Path $kit 'LearningModel-Setup-0.1.0-x64.exe'
-$expectedHash = '46193d253e1f0c55b082c116dbde1c5e2c314aaa654f20a78f5276abea27cd2e'
+$installerName = "LearningModel-Setup-$Version-x64.exe"
+$installer = Join-Path $kit $installerName
+$checksumPattern = '^[0-9a-f]{64}  ' + [Regex]::Escape($installerName) + '$'
+$checksum = @(Get-Content -LiteralPath (Join-Path $kit 'SHA256SUMS.txt') | Where-Object { $_ -match $checksumPattern })
+if ($checksum.Count -ne 1) { throw 'Expected exactly one installer entry in SHA256SUMS.txt' }
+$expectedHash = ($checksum[0] -split '\s+')[0]
 $results = Join-Path $kit 'results'
 $statePath = Join-Path $results 'acceptance-state.json'
 $dataRoot = Join-Path $env:LOCALAPPDATA 'LearningModel'
@@ -66,7 +72,7 @@ function Run-SelfTest($Program, $Name) {
     Invoke-CheckedProcess $Program @('--self-test', ('"' + $output + '"'))
     if (-not (Test-Path -LiteralPath $output)) { throw 'Self-test report missing' }
     $report = Get-Content -LiteralPath $output -Raw -Encoding UTF8 | ConvertFrom-Json
-    if ($report.status -ne 'ok' -or $report.version -ne '0.1.0' -or [int]$report.schema_version -ne 5) { throw 'Self-test status/version/schema mismatch' }
+    if ($report.status -ne 'ok' -or $report.version -ne $Version -or [int]$report.schema_version -ne 5) { throw 'Self-test status/version/schema mismatch' }
     if ([IO.Path]::GetFullPath($report.user_root) -ne [IO.Path]::GetFullPath($dataRoot)) { throw 'Unexpected default user data directory' }
     return $report
 }

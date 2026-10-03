@@ -327,23 +327,26 @@ def covered_mastery_stats(
         module_status = str(module.get("status") or "")
         module_topics = module.get("topics", []) or []
         if not module_topics:
-            topics.append((module_name, module, module_status))
+            topics.append((module_name, module, module_status, True))
             continue
         for topic in module_topics:
-            topics.append((module_name, topic, str(topic.get("status") or module_status)))
+            topics.append((module_name, topic, str(topic.get("status") or module_status), False))
 
     total_count = len(topics)
     covered = [
         item
         for item in topics
-        if is_covered_learning_item(subject["name"], item[0], item[1], item[2], records)
+        if is_covered_learning_item(
+            subject["name"], item[0], item[1], item[2], records,
+            module_only=item[3],
+        )
     ]
     if not covered:
         return round(weighted_mastery(subject) * 100), 0, total_count
 
     weighted_sum = 0.0
     weight_sum = 0.0
-    for module_name, item, _status in covered:
+    for module_name, item, _status, _module_only in covered:
         weight = float(item.get("importance", item.get("weight", 1)) or 1)
         mastery = float(item.get("mastery", 0) or 0)
         if computation_context is None:
@@ -374,6 +377,8 @@ def is_covered_learning_item(
     item: dict,
     status: str,
     records: list[dict],
+    *,
+    module_only: bool = False,
 ) -> bool:
     covered_statuses = {
         "learned",
@@ -381,6 +386,8 @@ def is_covered_learning_item(
         "current",
         "in_progress",
         "reviewing",
+        "learned_needs_review",
+        "mastered",
         "已学",
         "学习中",
         "当前",
@@ -388,20 +395,24 @@ def is_covered_learning_item(
     if status in covered_statuses:
         return True
     topic_name = str(item.get("name") or module_name)
-    evidence_terms = [term for term in {module_name, topic_name} if term]
-    if not evidence_terms:
+    if not topic_name:
         return False
     for record in records:
         if record.get("subject") != subject_name:
             continue
         text = " ".join(
             str(record.get(key) or "")
-            for key in ["module", "topic", "chapter", "note"]
+            for key in (["module", "topic", "chapter", "note"] if module_only else ["topic", "note"])
         )
         related = record.get("related_topics") or []
         if isinstance(related, list):
             text += " " + " ".join(str(item) for item in related)
+        for problem in record.get("problems") or []:
+            text += " " + " ".join(
+                str(problem.get(key) or "")
+                for key in ("related_topics", "title", "statement")
+            )
         normalized_text = normalize_learning_text(text)
-        if any(normalize_learning_text(term) in normalized_text for term in evidence_terms):
+        if normalize_learning_text(topic_name) in normalized_text:
             return True
     return False

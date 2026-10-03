@@ -1,6 +1,6 @@
-# Windows x64 source-maintenance build environment.
-# The published 0.1.0 bundle used the earlier lock at its source commit.
-# Original release interpreter: CPython 3.14.5 (64-bit).
+# Windows x64 source-maintenance build environment for LearningModel 0.1.1.
+# Published bundles used the locks at their respective release source commits.
+# Release build interpreter: CPython 3.14.5 (64-bit).
 #
 # These are the directly selected runtime and build-tool versions. Install into
 # a dedicated virtual environment; do not merge a developer environment into a

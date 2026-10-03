@@ -286,7 +286,13 @@ def overlay_model_with_catalog(
             for module in subject.get("modules", []) or []
             if isinstance(module, dict) and module.get("name")
         }
-        modules: list[dict] = []
+        # A catalog entry can exist before its first structure is adopted. In
+        # that state the legacy model remains the only source of module data.
+        modules: list[dict] = (
+            copy.deepcopy(list(subject.get("modules", []) or []))
+            if catalog_subject.structure_version is None
+            else []
+        )
         for catalog_module in catalog_subject.modules:
             module = copy.deepcopy(
                 legacy_modules.get(normalize_alias(catalog_module.canonical_name), {})
