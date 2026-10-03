@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import replace
 from datetime import date
 
 from study_app.core.active_subjects import (
@@ -10,7 +11,7 @@ from study_app.core.active_subjects import (
     require_activity_subject,
 )
 from study_app.core.dashboard import DashboardState
-from study_app.core.practice_bank import first_diagnostic_difficulty_cap, generate_practice_assignment
+from study_app.core.practice_bank import difficulty_label, first_diagnostic_difficulty_cap, generate_practice_assignment
 from study_app.core.study_plan_homework import _daily_plan, _lowest_cs_oj_focus, _matches_plan_subject
 
 LOGGER = logging.getLogger(__name__)
@@ -88,6 +89,7 @@ def apply_dynamic_difficulty_to_plan(
     selected_subject: str | None = None,
     *,
     as_of_date: date,
+    priority_topics: tuple[str, ...] = (),
 ) -> dict[str, list[str]]:
     import re
     from statistics import median
@@ -161,11 +163,35 @@ def apply_dynamic_difficulty_to_plan(
         assignment = generate_practice_assignment(assignment_topic, 1)
         difficulty = assignment.difficulty_score
         mixed_difficulty = None
+        generic_focus = any(
+            phrase in topic for phrase in ("上述", "这些知识点", "当前理论主题", "当前主题")
+        )
+        if generic_focus and priority_topics and not balanced_topic:
+            count_match = re.search(r"上述\s*(\d+)\s*个知识点", line)
+            focus_count = max(1, int(count_match.group(1))) if count_match else 4
+            focus_assignments = [
+                generate_practice_assignment(f"{subject} / {name}", 1)
+                for name in priority_topics[:focus_count]
+            ]
+            difficulty = round(median(item.difficulty_score for item in focus_assignments))
+            evidence_count = sum(
+                "暂无真实做题证据" not in item.difficulty_basis
+                for item in focus_assignments
+            )
+            assignment = replace(
+                assignment,
+                difficulty_score=difficulty,
+                difficulty_label=difficulty_label(difficulty),
+                difficulty_basis=(
+                    f"今日重点 {len(focus_assignments)} 个知识点的动态参考难度中位数；"
+                    f"其中 {evidence_count} 个有做题证据"
+                ),
+            )
         component_topics = sorted(
             {keyword for keyword in mixed_topic_keywords if keyword in line},
             key=line.find,
         )
-        if component_topics:
+        if component_topics and not (generic_focus and priority_topics and not balanced_topic):
             component_scores = [
                 generate_practice_assignment(
                     f"{subject} / {component}" if subject else component,
@@ -187,6 +213,12 @@ def apply_dynamic_difficulty_to_plan(
             difficulty = min(difficulty, diagnostic_cap)
             if mixed_difficulty is not None:
                 mixed_difficulty = min(mixed_difficulty, diagnostic_cap)
+        if generic_focus and priority_topics and not balanced_topic:
+            assignment = replace(
+                assignment,
+                difficulty_score=difficulty,
+                difficulty_label=difficulty_label(difficulty),
+            )
         replacement_index = 0
 
         def replace_difficulty(_match):

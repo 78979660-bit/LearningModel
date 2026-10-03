@@ -8,6 +8,22 @@
 
 排除个人数据库、根目录学习模型和记录 JSON、API 凭据、备份、迁移回执、性能日志、私有教材和作业。排除一次性的个人记录修订工具，以及含个人资料路径、未进入安装包的化学资料导入脚本。两个旧测试改为使用人工构造的测试学科和记录。
 
+## v0.1.1 公开预发布状态
+
+v0.1.1 于 2026-10-03 作为[公开预发布测试版](https://github.com/78979660-bit/LearningModel/releases/tag/v0.1.1)提供。源码通过 `v0.1.1` 标签及对应源码附件获取；运行时 Python 输入已与验收安装包的构建清单逐项核对。完整回归、Windows 11 安装生命周期及基本界面检查通过，仍有未测项目，详见 [0.1.1 验收记录](RELEASE_ACCEPTANCE_0.1.1.md)。
+
+| 附件 | 内容 |
+| --- | --- |
+| `LearningModel-Setup-0.1.1-x64.exe` | Windows x64 安装包 |
+| `LearningModel-0.1.1-source.zip` | 对应项目源码、测试与构建配置 |
+| `LearningModel-0.1.1-third-party-sources.zip` | 第三方对应源码归档及来源清单 |
+| `LearningModel-0.1.1-third-party-notices.zip` | 第三方许可与归属文本 |
+| `LearningModel-0.1.1-verification.zip` | 构建、回归、脱敏验收证据及许可材料 |
+| `LearningModel-0.1.1-Windows-QA.zip` | 安装包与 Windows 验收工具 |
+| `SHA256SUMS.txt` | 上述六个附件的 SHA-256 校验值 |
+
+本版原生组件及锁定依赖与 0.1.0 一致，第三方源码和归属归档保留原始字节与内部上游版本信息。安装包未签名，完整系统兼容性和外部 AI/OCR 尚未完成验收。
+
 ## v0.1.0 公开预发布状态
 
 公开二进制时需提供对应源码、构建材料以及第三方组件的许可和归属信息；源码公开本身不能替代这些材料。
@@ -16,7 +32,7 @@ v0.1.0 已于 2026-09-24 作为[公开预发布测试版](https://github.com/789
 
 **版本定位：**适合初步试用。Windows 11 虚拟机已完成安装、学科管理、计划和卸载重装等检查；Windows 10、多档系统缩放、真实做题评分、外部 AI 服务与 OCR 尚未完成端到端验收。安装包未进行代码签名。具体范围见[验收说明](https://github.com/78979660-bit/LearningModel/blob/8aeaf92bc786adc517b8d2569b291cdad79243c1/docs/RELEASE_ACCEPTANCE.md)。
 
-## 发布附件
+## v0.1.0 发布附件
 
 以下材料均可从 [v0.1.0 发布页面](https://github.com/78979660-bit/LearningModel/releases/tag/v0.1.0)下载：
 

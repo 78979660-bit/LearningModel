@@ -96,6 +96,14 @@ def should_refresh_plan_for_model(
             return True
 
     text = _plan_text(saved_plan)
+    if state is not None and subject_name and "暂无真实做题证据" in text:
+        if any(phrase in text for phrase in ("上述", "这些知识点", "当前理论主题", "当前主题")):
+            if any(
+                item.get("subject") == subject_name
+                and int(item.get("observation_count") or 0) > 0
+                for item in state.weighted_priorities
+            ):
+                return True
     if subject_name == "计算机科学":
         required_cs_patterns = [
             "OJ 原题训练",
@@ -177,10 +185,17 @@ def generate_study_plan_with_optional_llm(
         error_text = str(error).replace("\n", " ")[:300]
         plan["evidence"].append(f"LLM \u589e\u5f3a\u8ba1\u5212\u672a\u901a\u8fc7\u6821\u9a8c\uff0c\u5df2\u663e\u793a\u672c\u5730\u8ba1\u5212\u3002\u539f\u56e0\u6458\u8981\uff1a{error_text}")
         return checked((plan, f"\u5df2\u663e\u793a\u672c\u5730\u8ba1\u5212\uff1bLLM \u589e\u5f3a\u672a\u901a\u8fc7\u6821\u9a8c\uff1a{error_text}"))
+    priority_topics = tuple(
+        str(item.get("topic") or "").strip()
+        for item in payload.get("weighted_topic_priorities", ())
+        if item.get("topic")
+    )
+    difficulty_kwargs = {"priority_topics": priority_topics} if priority_topics else {}
     plan = apply_dynamic_difficulty_to_plan(
         plan,
         subject_name,
         as_of_date=state.today,
+        **difficulty_kwargs,
     )
     plan.setdefault("evidence", [])
     plan["evidence"].append("生成方式：LLM 增强计划，经本地结构校验后保存。")

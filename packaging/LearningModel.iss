@@ -2,7 +2,7 @@
 ; Compile from the project root through tools\build_release.ps1.
 
 #ifndef AppVersion
-  #define AppVersion "0.1.0"
+  #define AppVersion "0.1.1"
 #endif
 
 #define AppName "学习模型"

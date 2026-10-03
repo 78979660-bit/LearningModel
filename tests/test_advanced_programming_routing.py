@@ -110,6 +110,44 @@ def _assert_local_plan_recognizes_advanced_programming_without_oj_special_case()
     assert "CPP-OOP-PRACTICE" in updated["short"][0]
 
 
+def _assert_generic_focus_uses_real_topic_difficulties() -> None:
+    from study_app.core.local_study_plan import apply_dynamic_difficulty_to_plan
+    from study_app.core.practice_bank import PracticeAssignment
+
+    def assignment(topic: str, day: int = 1) -> PracticeAssignment:
+        score = 70 if "数据抽象与封装" in topic else 80 if "类职责" in topic else 50
+        return PracticeAssignment(
+            topic=topic,
+            difficulty_score=score,
+            difficulty_label="中等",
+            template_id="CPP-OOP-PRACTICE",
+            template_brief="完成开放式 C++ 实践",
+            exercise_count=2,
+            difficulty_basis="暂无真实做题证据" if score == 50 else "已完成做题记录",
+        )
+
+    plan = {"short": [
+        "高级程序设计；专项练习：围绕上述 2 个知识点完成练习。\n"
+        "当天作业：参考难度 50/100；题库模板 CPP-OOP-PRACTICE；生成/选做 2 题。"
+    ]}
+    with (
+        patch("study_app.core.local_study_plan.generate_practice_assignment", side_effect=assignment),
+        patch("study_app.core.study_phase.is_final_review", return_value=False),
+        patch("study_app.core.local_study_plan.first_diagnostic_difficulty_cap", return_value=None),
+    ):
+        updated = apply_dynamic_difficulty_to_plan(
+            plan,
+            "高级程序设计",
+            as_of_date=date(2026, 9, 29),
+            priority_topics=("数据抽象与封装", "类职责、信息隐藏与低耦合"),
+        )
+
+    homework = updated["short"][0]
+    assert "参考难度 75/100（偏难）" in homework
+    assert "其中 2 个有做题证据" in homework
+    assert "暂无真实做题证据" not in homework
+
+
 class AdvancedProgrammingIntegrationTests(unittest.TestCase):
     def test_aliases_are_specific_to_the_course(self) -> None:
         _assert_advanced_programming_aliases_are_specific_to_the_course()
@@ -125,3 +163,6 @@ class AdvancedProgrammingIntegrationTests(unittest.TestCase):
 
     def test_local_plan_recognizes_subject_without_oj_special_case(self) -> None:
         _assert_local_plan_recognizes_advanced_programming_without_oj_special_case()
+
+    def test_generic_focus_uses_real_topic_difficulties(self) -> None:
+        _assert_generic_focus_uses_real_topic_difficulties()

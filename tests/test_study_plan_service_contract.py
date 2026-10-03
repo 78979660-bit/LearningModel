@@ -73,6 +73,22 @@ class StudyPlanServiceContractTests(unittest.TestCase):
             )
         )
 
+    def test_generic_focus_with_practice_evidence_refreshes_saved_plan(self) -> None:
+        from study_app.ai.study_plan_service import (
+            should_refresh_plan_for_model,
+        )
+
+        state = replace(self.state(), weighted_priorities=(
+            {"subject": "高级程序设计", "topic": "数据抽象与封装", "observation_count": 1},
+        ))
+        saved = {
+            "end_date": state.today.isoformat(),
+            "input_signature": "same",
+            "plan": {"short": ["围绕上述 4 个知识点。当天作业：动态依据：暂无真实做题证据。"]},
+        }
+        with patch("study_app.ai.study_plan_service.current_study_plan_signature", return_value="same"):
+            self.assertTrue(should_refresh_plan_for_model(saved, state, "高级程序设计"))
+
     def test_single_day_llm_plan_without_legacy_day_prefix_is_valid(self) -> None:
         from study_app.ai.study_plan_generator import parse_and_validate_plan
 
