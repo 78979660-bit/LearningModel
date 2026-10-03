@@ -2,7 +2,7 @@
 [CmdletBinding()]
 param(
     [ValidatePattern('^\d+\.\d+\.\d+$')]
-    [string]$Version = '0.1.0',
+    [string]$Version = '0.1.1',
     [string]$PythonPath = '',
     [switch]$Bootstrap,
     [switch]$SkipTests,
@@ -278,7 +278,9 @@ if (-not $SkipTests) {
         $env:LEARNINGMODEL_DATA_ROOT = $testUserData
         $env:LEARNINGMODEL_LEGACY_ROOT = $testLegacyRoot
         $env:QT_QPA_PLATFORM = 'offscreen'
-        $testArgs = @('-m', 'pytest', '-q')
+        # Use the freshly created project-local directory instead of reusing
+        # pytest-of-USER, which may have ACLs from another execution context.
+        $testArgs = @('-m', 'pytest', '-q', '--basetemp', (Join-Path $testIsolationRoot 'pytest-tmp'), '--junitxml', (Join-Path $projectRoot 'build\release-tests.xml'))
         Invoke-NativeChecked -FilePath $PythonPath -NativeArgs $testArgs -Description 'Run release test suite'
     } finally {
         foreach ($name in $savedEnvironment.Keys) {

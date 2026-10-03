@@ -217,7 +217,7 @@ class ReleaseAppRuntimeTests(unittest.TestCase):
             {
                 "application_name": "LearningModel",
                 "display_name": "学习模型",
-                "version": "0.1.0",
+                "version": app_runtime.APP_VERSION,
                 "organization_name": "LearningModelProject",
                 "organization_domain": "learningmodel.local",
             },

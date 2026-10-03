@@ -1,0 +1,116 @@
+{
+  "version": "0.1.1",
+  "date": "2026-10-03",
+  "status": "passed_installation_lifecycle",
+  "final_signoff": false,
+  "installer_sha256": "9261ad4bb814dea9671af142df099ffc37da649c1b8c682165d87b0b87c65604",
+  "os": "Microsoft Windows 11 企业评估版",
+  "os_build": "26200",
+  "standard_user": true,
+  "development_commands": [],
+  "user_hive_loaded": true,
+  "hkcu_software_write_probe": "passed",
+  "baseline_restore": {
+    "version": "0.1.0",
+    "database_hash_preserved": true,
+    "status": "restored"
+  },
+  "lifecycle": {
+    "version": "0.1.1",
+    "installer_sha256": "9261ad4bb814dea9671af142df099ffc37da649c1b8c682165d87b0b87c65604",
+    "os": "Microsoft Windows 11 企业评估版",
+    "build": "10.0.26200.0",
+    "upgrade_preserved_database": true,
+    "uninstall_removed_program": true,
+    "uninstall_preserved_database": true,
+    "reinstall_preserved_database": true,
+    "record_counts_preserved": true,
+    "fresh_profile_empty": true,
+    "manual_ui_review": "basic_smoke_passed_complete_checklist_pending",
+    "external_ai_ocr_end_to_end": "not tested",
+    "passed": true
+  },
+  "uninstall_registry_version": "0.1.1",
+  "manual_ui_review": "basic_smoke_passed_complete_checklist_pending",
+  "ui_checks": {
+    "home": "passed",
+    "study_plan": "passed",
+    "assistant": "passed",
+    "knowledge_graph": "passed",
+    "settings": "passed",
+    "menu_collapse_expand_collapse": "passed",
+    "window_maximize_restore": "passed"
+  },
+  "self_tests": {
+    "baseline": {
+      "version": "0.1.0",
+      "status": "ok",
+      "schema_version": 5,
+      "counts": {
+        "subjects": 1,
+        "modules": 1,
+        "topics": 1,
+        "learning_records": 0,
+        "problem_attempts": 0
+      }
+    },
+    "upgraded": {
+      "version": "0.1.1",
+      "status": "ok",
+      "schema_version": 5,
+      "counts": {
+        "subjects": 1,
+        "modules": 1,
+        "topics": 1,
+        "learning_records": 0,
+        "problem_attempts": 0
+      }
+    },
+    "reinstalled": {
+      "version": "0.1.1",
+      "status": "ok",
+      "schema_version": 5,
+      "counts": {
+        "subjects": 1,
+        "modules": 1,
+        "topics": 1,
+        "learning_records": 0,
+        "problem_attempts": 0
+      }
+    },
+    "fresh": {
+      "version": "0.1.1",
+      "status": "ok",
+      "schema_version": 5,
+      "counts": {
+        "subjects": 0,
+        "modules": 0,
+        "topics": 0,
+        "learning_records": 0,
+        "problem_attempts": 0
+      }
+    }
+  },
+  "start_menu_shortcut_count": 1,
+  "test_data_limitation": "1 subject, 1 module, 1 topic; no nonempty learning records or problem attempts tested",
+  "limitations": [
+    "complete business UI workflows",
+    "fresh Windows installation",
+    "Windows 10",
+    "100/125/150 percent DPI",
+    "Chinese install path",
+    "shortcut launch",
+    "nonempty records preservation",
+    "interrupted migration recovery",
+    "external AI/OCR end-to-end",
+    "code signing",
+    "performance/log review"
+  ],
+  "prior_failure": {
+    "registry_error_code": 5,
+    "installer_exit_code": 4,
+    "cause": "unloaded user profile",
+    "resolved": "normal desktop logon and successful baseline restoration/lifecycle rerun"
+  },
+  "raw_database_export": "not performed; data and backups remain in VM"
+}

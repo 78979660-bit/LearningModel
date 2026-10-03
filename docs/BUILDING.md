@@ -30,14 +30,14 @@ pwsh -NoProfile -File tools/build_release.ps1
 | 产物 | 用途 |
 | --- | --- |
 | `dist/LearningModel/` | 完整程序目录，用于本地运行和打包 |
-| `release/artifacts/LearningModel-Setup-0.1.0-x64.exe` | 当前用户范围的 Windows 安装包 |
+| `release/artifacts/LearningModel-Setup-0.1.1-x64.exe` | 当前用户范围的 Windows 安装包 |
 | `release/artifacts/SHA256SUMS.txt` | 本次生成的安装包校验值 |
 | `release/artifacts/verification/` | 构建记录、依赖清单与打包检查材料 |
 
 核对安装包哈希：
 
 ```powershell
-Get-FileHash -LiteralPath .\release\artifacts\LearningModel-Setup-0.1.0-x64.exe -Algorithm SHA256
+Get-FileHash -LiteralPath .\release\artifacts\LearningModel-Setup-0.1.1-x64.exe -Algorithm SHA256
 ```
 
 与同一次构建生成的 `SHA256SUMS.txt` 比较。核对官网下载的安装包时，使用同一 Release 中的校验文件。
@@ -45,6 +45,8 @@ Get-FileHash -LiteralPath .\release\artifacts\LearningModel-Setup-0.1.0-x64.exe 
 脚本仍拒绝 `-PublicRelease`；这个开关不表示 GitHub Release 的公开状态。上述命令用于本地构建，生成的新文件需要单独测试和核对，不能直接视为与已发布安装包相同。
 
 ## 与公开 v0.1.0 安装包的关系
+
+当前工作树构建版本为 **0.1.1**。本轮验收记录见 [0.1.1 打包验收](RELEASE_ACCEPTANCE_0.1.1.md)，交付源码 ZIP 包含未提交的后续修正。以下 0.1.0 提交关系仅用于复现旧公开安装包。
 
 [公开预发布版本](https://github.com/78979660-bit/LearningModel/releases/tag/v0.1.0)的安装包从[源码提交 `8aeaf92`](https://github.com/78979660-bit/LearningModel/tree/8aeaf92bc786adc517b8d2569b291cdad79243c1)重新构建并完成所列验收。若要核对该安装包，请先切换到此提交，再参照其中的构建材料；发布附件另有对应源码 ZIP、第三方材料和 SHA-256 校验值。
 
