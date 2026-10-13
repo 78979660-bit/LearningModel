@@ -43,8 +43,7 @@ def extract_text(path: Path, max_chars: int = MAX_FILE_CHARS) -> ExtractedText:
         return ExtractedText(path, "", "missing", "文件不存在，无法解析。")
     try:
         if suffix == ".pdf":
-            text = _extract_pdf_text(path, max_chars)
-            warning = "" if is_usable_text(text) else "PDF 文本层不可用或质量较低；可能需要 OCR。"
+            text, warning = _extract_pdf_attachment(path, max_chars)
             return ExtractedText(path, text, "pdf", warning)
         if suffix == ".docx":
             return ExtractedText(path, _extract_docx_text(path, max_chars), "docx")
@@ -79,6 +78,48 @@ def _extract_pdf_text(path: Path, max_chars: int) -> str:
     if is_usable_text(pypdf_text):
         return pypdf_text
     return pypdf_text or fitz_text
+
+
+def _extract_pdf_attachment(path: Path, max_chars: int) -> tuple[str, str]:
+    """Keep page order and OCR raster pages without discarding digital text."""
+    try:
+        import fitz
+    except ImportError:
+        text = _extract_pdf_text(path, max_chars)
+        return text, "" if is_usable_text(text) else "PDF 文本层不可用；扫描页 OCR 需要 PDF 渲染组件。"
+
+    pieces: list[str] = []
+    warnings: list[str] = []
+    used_ocr = False
+    with fitz.open(path) as document, tempfile.TemporaryDirectory(prefix="learning-pdf-ocr-") as directory:
+        remaining = max_chars
+        for index, page in enumerate(document[:MAX_PDF_PAGES], start=1):
+            if remaining <= 0:
+                break
+            text = normalize_whitespace(page.get_text("text") or "")
+            if not is_usable_text(text) and page.get_images():
+                try:
+                    runtime = resolve_tesseract_runtime()
+                    # Bound rendered image memory for oversized source pages.
+                    scale = min(2.5, 3000 / max(page.rect.width, page.rect.height, 1))
+                    image_path = Path(directory) / "page.png"
+                    page.get_pixmap(matrix=fitz.Matrix(scale, scale), alpha=False).save(image_path)
+                    recognized, warning = _extract_image_text_with_cli(image_path, runtime, remaining)
+                    if warning or not recognized.strip():
+                        warnings.append(f"第 {index} 页扫描文字未能识别，请检查本地 OCR 环境或人工核对。")
+                    else:
+                        text = recognized
+                        used_ocr = True
+                except Exception:
+                    warnings.append(f"第 {index} 页扫描文字未能识别，请检查本地 OCR 环境或人工核对。")
+            if text.strip():
+                piece = text[:remaining]
+                pieces.append(piece)
+                remaining -= len(piece) + 1
+    text = normalize_whitespace("\n".join(pieces))[:max_chars]
+    if not warnings and not (is_usable_text(text) or used_ocr and text.strip()):
+        warnings.append("PDF 文本层不可用或质量较低；未取得可用 OCR 文本。")
+    return text, "；".join(warnings)
 
 
 def _extract_pdf_text_with_pymupdf(path: Path, max_chars: int) -> str:
@@ -186,6 +227,7 @@ def _extract_image_text_with_cli(path: Path, runtime: TesseractRuntime, max_char
             encoding="utf-8",
             errors="strict",
             timeout=30,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
     except Exception as error:
         return "", f"图片 OCR 失败：{error}"

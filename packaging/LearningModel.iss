@@ -1,8 +1,8 @@
-; LearningModel per-user Windows installer (Inno Setup 6).
+; LearningModel per-user Windows installer (Inno Setup 7.1.0).
 ; Compile from the project root through tools\build_release.ps1.
 
 #ifndef AppVersion
-  #define AppVersion "0.1.1"
+  #define AppVersion "0.1.2"
 #endif
 
 #define AppName "学习模型"
@@ -10,12 +10,14 @@
 #define AppPublisher "LearningModel Project"
 #define AppId "{{E06D2BBE-5FA4-4F72-B03E-130652DE5A52}"
 #define ProjectRoot AddBackslash(SourcePath) + ".."
-#define AppSource ProjectRoot + "\dist\LearningModel"
+#ifndef AppSource
+  #define AppSource ProjectRoot + "\dist\LearningModel"
+#endif
 #define AppExeName "LearningModel.exe"
 #define AppIcon ProjectRoot + "\study_app\ui\assets\app.ico"
 
 #if !FileExists(AppSource + "\" + AppExeName)
-  #error "dist\LearningModel\LearningModel.exe is missing; build the onedir application first."
+  #error "AppSource\LearningModel.exe is missing; build and verify the onedir application first."
 #endif
 
 #if !FileExists(AppIcon)
@@ -70,11 +72,11 @@ Name: "desktopicon"; Description: "创建桌面快捷方式"; GroupDescription: 
 Source: "{#AppSource}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
-Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExeName}"; WorkingDir: "{app}"
-Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExeName}"; WorkingDir: "{app}"; Tasks: desktopicon
+Name: "{group}\{#AppName}"; Filename: "{app}\{#AppExeName}"; Parameters: "--qml"; WorkingDir: "{app}"
+Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExeName}"; Parameters: "--qml"; WorkingDir: "{app}"; Tasks: desktopicon
 
 [Run]
-Filename: "{app}\{#AppExeName}"; Description: "启动 {#AppName}"; Flags: nowait postinstall skipifsilent
+Filename: "{app}\{#AppExeName}"; Parameters: "--qml"; Description: "启动 {#AppName}"; Flags: nowait postinstall skipifsilent
 
 [Code]
 var

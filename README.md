@@ -28,6 +28,10 @@
 
 图谱展示章节及已确认的先修关系。点击章节可查看学习状态、覆盖情况和掌握度；缺少评估证据时会显示“待评估”，非常直观！
 
+## 0.1.2 未签名正式版
+
+采用 QML 界面，修复单学科计划混入其他学科任务、空分数预览显示 undefined，以及扫描 PDF 的 OCR 参数和无文本页识别问题。保留现有用户数据目录、升级 AppId 和 schema v5。2026-10-13 完成 11 项发布前核验；具体环境、证据范围及限制见 [正式版验收](docs/UNSIGNED_RELEASE_ACCEPTANCE_0.1.2.md)。
+
 ## 0.1.1 更新与打包验收
 
 这一版主要整理源码结构、修复配置和数据处理问题，让后续维护与功能迭代更容易。
@@ -58,28 +62,24 @@
 
 ## 下载与体验
 
-当前公开测试版为 **v0.1.1**，欢迎下载体验！
+当前正式版为 **v0.1.2（未签名）**。
 
-👉 [下载 Windows x64 安装包](https://github.com/78979660-bit/LearningModel/releases/download/v0.1.1/LearningModel-Setup-0.1.1-x64.exe)
+[下载 Windows x64 安装包](https://github.com/78979660-bit/LearningModel/releases/download/v0.1.2/LearningModel-Setup-0.1.2-x64.exe) · [全部发布文件](https://github.com/78979660-bit/LearningModel/releases/tag/v0.1.2) · [SHA256SUMS.txt](https://github.com/78979660-bit/LearningModel/releases/download/v0.1.2/SHA256SUMS.txt)
 
-适用于 Windows 10 1809 及以上的 x64 系统；本轮实测环境为 Windows 11。请使用[同一版本的 SHA256SUMS.txt](https://github.com/78979660-bit/LearningModel/releases/download/v0.1.1/SHA256SUMS.txt)核对下载文件。覆盖安装沿用当前用户数据目录；升级前建议自行备份学习数据。
+适用于 Windows 10 1809 及以上的 x64 系统；已在 Windows 10 和 Windows 11 测试环境验收。安装包未进行代码签名，Windows 或浏览器可能显示未知发布者或 SmartScreen 提示。请从本项目 Release 下载并核对校验和；校验和不代替发布者身份验证。
 
-安装后，可在应用内引入学科并记录实际学习情况。新学科尚无学习覆盖时，知识点不会自动进入计划候选；补充能关联知识点的学习记录后，再尝试生成计划建议。
-
-这是一个仍在成长中的项目。本轮已在 Windows 11 普通用户环境中验证升级、卸载保留数据、重装和基本界面；非空学习记录保留、Windows 10、多档 DPI、完整业务流程及真实外部 AI/OCR 仍未完成本轮验收。安装包尚未进行代码签名。
-
-[查看更新内容、验收范围与全部下载文件](https://github.com/78979660-bit/LearningModel/releases/tag/v0.1.1) · [历史 v0.1.0](https://github.com/78979660-bit/LearningModel/releases/tag/v0.1.0)
+覆盖安装保留现有用户数据，升级前建议备份。安装与卸载方式见 [安装说明](release/安装与升级说明.md)。OCR 另需 Tesseract，AI 服务需自行配置；外部 AI 全部服务商和网络环境未穷举。
 
 ## 从源码运行
 
-如果你想参与开发，或看看学习模型是如何工作的，可以从源码启动。下方命令使用[公开 v0.1.1 对应的源码标签](https://github.com/78979660-bit/LearningModel/tree/v0.1.1)，版本关系见 [构建说明](docs/BUILDING.md#与公开-v011-安装包的关系)。
+如果你想参与开发，或看看学习模型是如何工作的，可以从源码启动。下方命令使用[v0.1.2 对应的源码标签](https://github.com/78979660-bit/LearningModel/tree/v0.1.2)，版本关系见 [构建说明](docs/BUILDING.md#与公开-v011-安装包的关系)。
 
 当前验证环境为 Windows x64、CPython 3.14.5。在 PowerShell 中执行：
 
 ```powershell
 git clone https://github.com/78979660-bit/LearningModel.git
 cd LearningModel
-git checkout v0.1.1
+git checkout v0.1.2
 py -3.14 -m venv .venv-build
 & .\.venv-build\Scripts\python.exe -m pip install -r requirements-build.lock.txt
 & .\.venv-build\Scripts\python.exe run_study_app.pyw
@@ -87,9 +87,35 @@ py -3.14 -m venv .venv-build
 
 首次启动使用空记录和干净默认模型。通过应用内学科管理引入学科。用户数据保存在 `%LOCALAPPDATA%\LearningModel`。
 
-OCR 需要另外配置 Tesseract；ChatGPT 桌面桥接需要对应桌面应用；AI 服务密钥由用户自行设置。不使用这些功能时，无需提前配置。
+OCR 需要另外配置 Tesseract；AI 服务密钥由用户自行设置。不使用这些功能时，无需提前配置。本迁移分支已移除 ChatGPT 桌面 PDF 生成，本地练习卷与 PDF 导出保留。
 
 ## 开发与构建
+
+本分支正在分阶段迁移和纸学习室到 **PySide6＋Qt Quick/QML**。审查、顺序和安全边界见 [迁移方案](docs/QML_MIGRATION_PLAN.md)，验证见 [阶段一](docs/QML_PHASE1_ACCEPTANCE.md)、[阶段二](docs/QML_PHASE2_ACCEPTANCE.md)、[阶段三](docs/QML_PHASE3_ACCEPTANCE.md)、[阶段四](docs/QML_PHASE4_ACCEPTANCE.md)和 [阶段五](docs/QML_PHASE5_ACCEPTANCE.md)。完整 QML 窗口的五条主路由均接入真实服务，覆盖计划、记录、助理、图谱、设置，以及学科引入、可恢复移除和恢复。密钥由 Python 管理的 Windows 系统对话框收集，页面只显示凭据状态；凭据与服务商及接口身份绑定。所有 I/O 和提交通过后台 Python 适配层调用既有服务。首页已接入真实每日总结、显式云端增强、模式开关、显式收起到图标浮窗和原生托盘；浮窗双击恢复，主窗口关闭直接退出；唤醒在 GUI 线程执行，明确退出后先排空任务再释放单实例保护。ChatGPT 桌面 PDF 已移除，本地练习 PDF 和手动复制上下文保留。旧 Widgets 入口继续作对照；常规入口已切换至 QML；本版发布验收范围见上方正式版验收，外部 AI 服务仍有未测环境。
+
+2026-10-06 已对照最终和纸概念包重构五页 QML 的主题、导航和纸面布局。预算、进度、图谱及所有确认流程仍接真实服务；和纸、樱花、竹叶为独立 SVG。启动参数为 `--qml`，最新截图、内部包和验证记录见 [视觉重构说明](docs/QML_VISUAL_REBUILD.md)。
+
+2026-10-09 继续优化 QML 页面切换与菜单动画：计划子标签保留草稿和控件，隐藏页面减少重复排版，纸面改用场景图形绘制，菜单宽度与文字动画统一。首次进入等待初始数据及布局帧完成后再呈现，避免异步创建期间暴露窄卡片、零高度和位置回跳；首次失败会显示错误并允许重试，回访仍直接显示保留页面。验证范围、原始日志和限制见 [本轮性能记录](docs/PERFORMANCE_AUDIT_20261009.md)。
+
+QML 应用现在在启动准备界面后预加载五个主页面、计划页的四个子标签，以及图谱和设置的子页，完成数据读取与布局后回到首页开放操作。切换复用已有控件；文件或学习数据变化时仍会刷新。启动等待与内存占用会增加，具体验证见同一性能记录。
+
+```powershell
+# 使用已经安装 requirements-build.lock.txt 的项目环境
+& .\.venv-build\Scripts\python.exe -m study_app.quick
+# 自检自动使用临时数据，报告写到指定路径
+& .\.venv-build\Scripts\python.exe -m study_app.quick --self-test output\qml-self-test.json
+# 原 Widgets 入口继续保留；冻结程序的 QML 入口使用 --qml
+& .\.venv-build\Scripts\python.exe run_study_app.pyw
+```
+
+阶段五已在全新的 Python 3.14.5 x64 环境按 `requirements-build.lock.txt` 安装全部锁定依赖，复现独立 QA 冻结目录；构建、环境、源码输入哈希和验收日志分别保存。先前 `.venv-qml`（Python 3.12.14）验证记录仍保留。[发布前收尾](docs/QML_PRERELEASE_CLOSEOUT.md)进一步提供防输入漂移检查、完整冻结文件哈希与独立内部候选安装器。安装器尚未完成本次安装生命周期验收或发布，不能替代公开 v0.1.1 的同名附件。
+
+```powershell
+# 选择已经装好锁定依赖的正式解释器；每次使用新的 RunName
+& tools/build_qml_qa.ps1 -PythonPath .venv-build/Scripts/python.exe -RunName qa-qml-check -RequireReleaseRuntime
+# 只核对环境与输入，不构建或创建目录
+& tools/build_qml_qa.ps1 -PythonPath .venv-build/Scripts/python.exe -RunName qa-qml-preflight -RequireReleaseRuntime -PreflightOnly
+```
 
 运行测试：
 

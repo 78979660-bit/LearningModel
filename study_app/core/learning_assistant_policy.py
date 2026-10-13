@@ -5,6 +5,7 @@ Defaults are the safe ones: nothing auto-executes, no advisor configured.
 """
 from __future__ import annotations
 
+import sqlite3
 from typing import Any
 
 from study_app.core.learning_assistant_schema import (
@@ -12,6 +13,7 @@ from study_app.core.learning_assistant_schema import (
     READONLY_ACTIONS,
 )
 from study_app.data.database import get_setting, set_setting
+from study_app.data.db_runtime import DEFAULT_DB_PATH
 
 AUTO_EXEC_SETTINGS_KEY = "learning_assistant_auto_exec"
 PRIVACY_SETTINGS_KEY = "learning_assistant_privacy"
@@ -21,8 +23,20 @@ ADVISOR_MODES = ("external", "mock", "unset")
 _ALLOWED_AUTO_ACTIONS = tuple(sorted(AUTO_ELIGIBLE_ACTIONS))
 
 
-def load_auto_exec_policy(db_path: Any = None) -> dict[str, bool]:
-    raw = get_setting(AUTO_EXEC_SETTINGS_KEY, {}, db_path) if db_path is not None else get_setting(AUTO_EXEC_SETTINGS_KEY, {})
+def load_auto_exec_policy(
+    db_path: Any = None,
+    *,
+    connection: sqlite3.Connection | None = None,
+) -> dict[str, bool]:
+    if connection is not None:
+        raw = get_setting(
+            AUTO_EXEC_SETTINGS_KEY,
+            {},
+            db_path if db_path is not None else DEFAULT_DB_PATH,
+            connection=connection,
+        )
+    else:
+        raw = get_setting(AUTO_EXEC_SETTINGS_KEY, {}, db_path) if db_path is not None else get_setting(AUTO_EXEC_SETTINGS_KEY, {})
     if not isinstance(raw, dict):
         raw = {}
     policy: dict[str, bool] = {action: False for action in _ALLOWED_AUTO_ACTIONS}
@@ -33,7 +47,12 @@ def load_auto_exec_policy(db_path: Any = None) -> dict[str, bool]:
     return policy
 
 
-def save_auto_exec_policy(policy: dict[str, bool], db_path: Any = None) -> dict[str, bool]:
+def save_auto_exec_policy(
+    policy: dict[str, bool],
+    db_path: Any = None,
+    *,
+    connection: sqlite3.Connection | None = None,
+) -> dict[str, bool]:
     if not isinstance(policy, dict):
         raise ValueError("policy 必须是字典")
     unknown = sorted(set(policy) - set(AUTO_ELIGIBLE_ACTIONS))
@@ -41,9 +60,15 @@ def save_auto_exec_policy(policy: dict[str, bool], db_path: Any = None) -> dict[
         raise ValueError(f"以下动作不允许自动执行：{unknown}")
     clean = {action: bool(policy.get(action, False)) for action in _ALLOWED_AUTO_ACTIONS}
     if db_path is not None:
-        set_setting(AUTO_EXEC_SETTINGS_KEY, clean, db_path)
+        if connection is None:
+            set_setting(AUTO_EXEC_SETTINGS_KEY, clean, db_path)
+        else:
+            set_setting(AUTO_EXEC_SETTINGS_KEY, clean, db_path, connection=connection)
     else:
-        set_setting(AUTO_EXEC_SETTINGS_KEY, clean)
+        if connection is None:
+            set_setting(AUTO_EXEC_SETTINGS_KEY, clean)
+        else:
+            set_setting(AUTO_EXEC_SETTINGS_KEY, clean, connection=connection)
     return clean
 
 
@@ -60,8 +85,20 @@ def can_auto_execute(
     return bool(current.get(action_type, False))
 
 
-def load_privacy_settings(db_path: Any = None) -> dict[str, Any]:
-    raw = get_setting(PRIVACY_SETTINGS_KEY, {}, db_path) if db_path is not None else get_setting(PRIVACY_SETTINGS_KEY, {})
+def load_privacy_settings(
+    db_path: Any = None,
+    *,
+    connection: sqlite3.Connection | None = None,
+) -> dict[str, Any]:
+    if connection is not None:
+        raw = get_setting(
+            PRIVACY_SETTINGS_KEY,
+            {},
+            db_path if db_path is not None else DEFAULT_DB_PATH,
+            connection=connection,
+        )
+    else:
+        raw = get_setting(PRIVACY_SETTINGS_KEY, {}, db_path) if db_path is not None else get_setting(PRIVACY_SETTINGS_KEY, {})
     if not isinstance(raw, dict):
         raw = {}
     advisor_mode = raw.get("advisor_mode")
@@ -74,7 +111,12 @@ def load_privacy_settings(db_path: Any = None) -> dict[str, Any]:
     }
 
 
-def save_privacy_settings(settings: dict[str, Any], db_path: Any = None) -> dict[str, Any]:
+def save_privacy_settings(
+    settings: dict[str, Any],
+    db_path: Any = None,
+    *,
+    connection: sqlite3.Connection | None = None,
+) -> dict[str, Any]:
     if not isinstance(settings, dict):
         raise ValueError("settings 必须是字典")
     advisor_mode = settings.get("advisor_mode")
@@ -85,7 +127,13 @@ def save_privacy_settings(settings: dict[str, Any], db_path: Any = None) -> dict
         "allow_external_intent": bool(settings.get("allow_external_intent", False)),
     }
     if db_path is not None:
-        set_setting(PRIVACY_SETTINGS_KEY, clean, db_path)
+        if connection is None:
+            set_setting(PRIVACY_SETTINGS_KEY, clean, db_path)
+        else:
+            set_setting(PRIVACY_SETTINGS_KEY, clean, db_path, connection=connection)
     else:
-        set_setting(PRIVACY_SETTINGS_KEY, clean)
+        if connection is None:
+            set_setting(PRIVACY_SETTINGS_KEY, clean)
+        else:
+            set_setting(PRIVACY_SETTINGS_KEY, clean, connection=connection)
     return clean

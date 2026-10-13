@@ -104,11 +104,10 @@ def test_homework_adapter_uses_explicit_plan_fields() -> None:
     assert spec.question_count == 4
 
 
-def test_default_output_isolated_from_chatgpt_temp(monkeypatch, tmp_path: Path) -> None:
+def test_default_output_uses_managed_export_root(monkeypatch, tmp_path: Path) -> None:
     from study_app.core import local_practice_service
 
     export_root = tmp_path / "LearningModel" / "exports"
     monkeypatch.setattr(local_practice_service, "EXPORTS_DIR", export_root)
     path = default_local_practice_output_directory()
     assert path == export_root / "local_practice_papers"
-    assert "generated_pdfs_temp" not in str(path)

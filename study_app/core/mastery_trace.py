@@ -65,55 +65,84 @@ def freeze_replay_baseline(
     topic["source_json"] = source
 
 
+class MasteryTraceReader:
+    """A single read-only snapshot for one page load; never retained across loads."""
+
+    def __init__(self, *, model_path: Path | str, db_path: Path | str = DEFAULT_DB_PATH):
+        self.model_path, self.db_path = Path(model_path), db_path
+        self._topics = None
+        self._records = None
+        self._fingerprints = {}
+
+    def topic(self, subject_name, module_name, topic_name):
+        if self._topics is None:
+            model = json.loads(self.model_path.read_text(encoding="utf-8"))
+            self._topics = {}
+            seen_subjects = set()
+            for subject in model.get("subjects", []):
+                if subject.get("name") in seen_subjects:
+                    continue
+                seen_subjects.add(subject.get("name"))
+                seen_modules = set()
+                for module in subject.get("modules", []):
+                    if module.get("name") in seen_modules:
+                        continue
+                    seen_modules.add(module.get("name"))
+                    for topic in module.get("topics", []):
+                        # Preserve first-match behavior of the individual reader.
+                        self._topics.setdefault(
+                            (subject.get("name"), module.get("name"), topic.get("name")), topic)
+        key = (subject_name, module_name, topic_name)
+        if key not in self._topics:
+            raise LookupError(f"未找到知识点：{subject_name}/{module_name}/{topic_name}")
+        return self._topics[key]
+
+    def record_status(self, record_id, fingerprint):
+        if self._records is None:
+            self._records = {}
+            with connect_readonly(self.db_path) as connection:
+                for row in connection.execute("SELECT id, raw_json FROM learning_records"):
+                    try:
+                        record = json.loads(row["raw_json"])
+                    except (TypeError, json.JSONDecodeError):
+                        continue
+                    if isinstance(record, dict):
+                        record["id"] = row["id"]
+                        self._records[row["id"]] = record
+        record = self._records.get(record_id)
+        if record is None:
+            return "missing"
+        if record_id not in self._fingerprints:
+            self._fingerprints[record_id] = record_fingerprint(record)
+        return ("verified" if self._fingerprints[record_id] == fingerprint
+                else "changed_or_unverifiable")
+
+    def trace(self, subject_name, module_name, topic_name):
+        return list_topic_mastery_trace(
+            subject_name, module_name, topic_name,
+            model_path=self.model_path, db_path=self.db_path, reader=self)
+
+
 def list_topic_mastery_trace(
     subject_name: str, module_name: str, topic_name: str,
     *, model_path: Path | str, db_path: Path | str = DEFAULT_DB_PATH,
+    reader: MasteryTraceReader | None = None,
 ) -> dict[str, Any]:
     """Read-only contribution diagnosis; missing legacy provenance remains unknown."""
-    model = json.loads(Path(model_path).read_text(encoding="utf-8"))
-    topic = None
-    for subject in model.get("subjects", []):
-        if subject.get("name") != subject_name:
-            continue
-        for module in subject.get("modules", []):
-            if module.get("name") != module_name:
-                continue
-            topic = next(
-                (item for item in module.get("topics", [])
-                 if item.get("name") == topic_name), None
-            )
-            break
-        break
-    if topic is None:
-        raise LookupError(f"未找到知识点：{subject_name}/{module_name}/{topic_name}")
+    reader = reader or MasteryTraceReader(model_path=model_path, db_path=db_path)
+    topic = reader.topic(subject_name, module_name, topic_name)
 
     source = _source_data(topic)
     history = source.get("mastery_contribution_trace_v1")
     if not isinstance(history, list):
         history = []
-    records = {}
-    with connect_readonly(db_path) as connection:
-        for row in connection.execute("SELECT id, raw_json FROM learning_records"):
-            try:
-                record = json.loads(row["raw_json"])
-            except (TypeError, json.JSONDecodeError):
-                continue
-            if isinstance(record, dict):
-                record["id"] = row["id"]
-                records[row["id"]] = record
     contributions = []
     for event in history:
         if not isinstance(event, dict):
             continue
         item = json.loads(json.dumps(event, ensure_ascii=False, default=str))
-        record_id = item.get("record_id")
-        record = records.get(record_id)
-        if record is None:
-            item["record_status"] = "missing"
-        elif record_fingerprint(record) != item.get("record_fingerprint"):
-            item["record_status"] = "changed_or_unverifiable"
-        else:
-            item["record_status"] = "verified"
+        item["record_status"] = reader.record_status(
+            item.get("record_id"), item.get("record_fingerprint"))
         contributions.append(item)
 
     legacy_update = source.get("last_mastery_update") or source.get(

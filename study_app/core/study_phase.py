@@ -523,8 +523,12 @@ def get_subject_phase(
     return {**raw, **REGULAR_POLICY, "subject": subject, "exam_scope": raw.get("exam_scope")}
 
 
-def set_subject_phase(subject: str, phase: str) -> dict[str, Any]:
-    existing = get_setting(phase_setting_key(subject), {})
+def set_subject_phase(
+    subject: str,
+    phase: str,
+    db_path: Path | str = DEFAULT_DB_PATH,
+) -> dict[str, Any]:
+    existing = get_setting(phase_setting_key(subject), {}, db_path=db_path)
     if phase == FINAL_REVIEW_PHASE:
         exam_scope = (
             existing.get("exam_scope")
@@ -545,23 +549,29 @@ def set_subject_phase(subject: str, phase: str) -> dict[str, Any]:
     else:
         exam_scope = existing.get("exam_scope") if isinstance(existing, dict) else None
         policy = {**REGULAR_POLICY, "subject": subject, "exam_scope": exam_scope}
-    set_setting(phase_setting_key(subject), policy)
+    set_setting(phase_setting_key(subject), policy, db_path=db_path)
     _clear_phase_cache()
     return policy
 
 
-def set_subject_exam_scope(subject: str, exam_scope: dict[str, Any] | None) -> dict[str, Any]:
-    policy = get_subject_phase(subject)
+def set_subject_exam_scope(
+    subject: str,
+    exam_scope: dict[str, Any] | None,
+    db_path: Path | str = DEFAULT_DB_PATH,
+) -> dict[str, Any]:
+    policy = get_subject_phase(subject, db_path=db_path)
     policy["exam_scope"] = exam_scope
-    set_setting(phase_setting_key(subject), policy)
+    set_setting(phase_setting_key(subject), policy, db_path=db_path)
     _clear_phase_cache()
     return policy
 
 
-def exam_scope_label(subject: str | None) -> str:
+def exam_scope_label(
+    subject: str | None, db_path: Path | str = DEFAULT_DB_PATH
+) -> str:
     if not subject:
         return ""
-    scope = get_subject_phase(subject).get("exam_scope")
+    scope = get_subject_phase(subject, db_path=db_path).get("exam_scope")
     return str(scope.get("label") or "") if isinstance(scope, dict) else ""
 
 
@@ -638,13 +648,15 @@ def _has_positive_reference(text: str, keyword: str) -> bool:
         start = index + len(keyword)
 
 
-def _topic_submodule(subject: str, module: str, topic: str) -> str:
+def _topic_submodule(
+    subject: str, module: str, topic: str, model_path: str | Path | None = None
+) -> str:
     if not topic:
         return ""
     try:
         from study_app.core.curriculum_hierarchy import find_topic_submodule
 
-        return find_topic_submodule(load_learning_model(), subject, module, topic)
+        return find_topic_submodule(load_learning_model(model_path), subject, module, topic)
     except Exception:
         return ""
 
@@ -657,13 +669,18 @@ def is_in_exam_scope(
     *,
     phase: dict[str, Any] | None = None,
     infer_submodule: bool = True,
+    db_path: Path | str = DEFAULT_DB_PATH,
+    model_path: str | Path | None = None,
 ) -> bool:
     if not subject:
         return True
     if phase is None:
-        if not is_final_review(subject):
+        phase_path_kwargs = (
+            {} if Path(db_path) == Path(DEFAULT_DB_PATH) else {"db_path": db_path}
+        )
+        if not is_final_review(subject, **phase_path_kwargs):
             return True
-        policy = get_subject_phase(subject)
+        policy = get_subject_phase(subject, **phase_path_kwargs)
     else:
         policy = phase
     if policy.get("phase") != FINAL_REVIEW_PHASE:
@@ -676,7 +693,7 @@ def is_in_exam_scope(
     topic_name = str(topic or "").strip()
     submodule_name = str(submodule or "").strip()
     if not submodule_name and infer_submodule:
-        submodule_name = _topic_submodule(subject, module_name, topic_name)
+        submodule_name = _topic_submodule(subject, module_name, topic_name, model_path)
     combined = f"{module_name} {topic_name}".strip()
 
     excluded_topics = [str(item).strip() for item in scope.get("excluded_topics", []) if str(item).strip()]
@@ -710,10 +727,16 @@ def is_in_exam_scope(
     return bool(chapter_numbers and any(number in allowed for number in chapter_numbers))
 
 
-def out_of_exam_scope_references(subject: str | None, text: str) -> list[str]:
-    if not subject or not is_final_review(subject) or not text:
+def out_of_exam_scope_references(
+    subject: str | None,
+    text: str,
+    *,
+    db_path: Path | str = DEFAULT_DB_PATH,
+    model_path: str | Path | None = None,
+) -> list[str]:
+    if not subject or not is_final_review(subject, db_path=db_path) or not text:
         return []
-    scope = get_subject_phase(subject).get("exam_scope")
+    scope = get_subject_phase(subject, db_path=db_path).get("exam_scope")
     if not isinstance(scope, dict) or not scope:
         return []
 
@@ -736,7 +759,7 @@ def out_of_exam_scope_references(subject: str | None, text: str) -> list[str]:
                 violations.append(f"第{number}章")
 
     try:
-        model = load_learning_model()
+        model = load_learning_model(model_path)
         subject_item = next(
             (item for item in model.get("subjects", []) if item.get("name") == subject),
             None,
@@ -747,7 +770,10 @@ def out_of_exam_scope_references(subject: str | None, text: str) -> list[str]:
             module_name = str(module.get("name") or "")
             module_topics = list(module.get("topics", []) or [])
             module_has_in_scope_content = any(
-                is_in_exam_scope(subject, module_name, str(topic.get("name") or ""))
+                is_in_exam_scope(
+                    subject, module_name, str(topic.get("name") or ""),
+                    db_path=db_path, model_path=model_path,
+                )
                 for topic in module_topics
             )
             if not module_has_in_scope_content:
@@ -757,7 +783,10 @@ def out_of_exam_scope_references(subject: str | None, text: str) -> list[str]:
                 topic_name = str(topic.get("name") or "")
                 if (
                     topic_name
-                    and not is_in_exam_scope(subject, module_name, topic_name)
+                    and not is_in_exam_scope(
+                        subject, module_name, topic_name,
+                        db_path=db_path, model_path=model_path,
+                    )
                     and _has_positive_reference(text, topic_name)
                 ):
                     violations.append(topic_name)
@@ -774,6 +803,8 @@ def exam_scope_submodule_stats(
     *,
     model: dict[str, Any] | None = None,
     records: list[dict[str, Any]] | None = None,
+    db_path: Path | str = DEFAULT_DB_PATH,
+    model_path: str | Path | None = None,
 ) -> list[dict[str, Any]]:
     """Summarize exam coverage at submodule granularity.
 
@@ -783,8 +814,8 @@ def exam_scope_submodule_stats(
     from learning_bkt import bkt_topic_states
     from study_app.core.curriculum_hierarchy import iter_submodules
 
-    model = model or load_learning_model()
-    records = records if records is not None else load_raw_records(DEFAULT_DB_PATH)
+    model = model or load_learning_model(model_path)
+    records = records if records is not None else load_raw_records(db_path)
     state_lookup = {
         (str(item.get("module") or ""), str(item.get("topic") or "")): item
         for item in bkt_topic_states(model, records)
@@ -812,7 +843,10 @@ def exam_scope_submodule_stats(
                 topics = [
                     topic
                     for topic in submodule.get("topics_data", [])
-                    if is_in_exam_scope(subject, module_name, str(topic.get("name") or ""), submodule_name)
+                    if is_in_exam_scope(
+                        subject, module_name, str(topic.get("name") or ""), submodule_name,
+                        db_path=db_path, model_path=model_path,
+                    )
                 ]
                 if not topics:
                     continue
@@ -844,12 +878,16 @@ def exam_scope_submodule_stats(
     return result
 
 
-def is_final_review(subject: str | None) -> bool:
-    return bool(subject) and get_subject_phase(subject).get("phase") == FINAL_REVIEW_PHASE
+def is_final_review(
+    subject: str | None, db_path: Path | str = DEFAULT_DB_PATH
+) -> bool:
+    return bool(subject) and get_subject_phase(subject, db_path=db_path).get("phase") == FINAL_REVIEW_PHASE
 
 
-def is_archived(subject: str | None) -> bool:
-    return bool(subject) and get_subject_phase(subject).get("phase") == ARCHIVED_PHASE
+def is_archived(
+    subject: str | None, db_path: Path | str = DEFAULT_DB_PATH
+) -> bool:
+    return bool(subject) and get_subject_phase(subject, db_path=db_path).get("phase") == ARCHIVED_PHASE
 
 
 def _record_date_key(record: dict[str, Any]) -> str:
@@ -1002,8 +1040,14 @@ def weighted_topic_priority_states(
     as_of_date: date,
     computation_context: Any | None = None,
     phase: dict[str, Any] | None = None,
+    db_path: Path | str = DEFAULT_DB_PATH,
+    model_path: str | Path | None = None,
 ) -> list[dict[str, Any]]:
-    phase = phase or get_subject_phase(subject)
+    if phase is None:
+        phase_path_kwargs = (
+            {} if Path(db_path) == Path(DEFAULT_DB_PATH) else {"db_path": db_path}
+        )
+        phase = get_subject_phase(subject, **phase_path_kwargs)
     if phase.get("phase") == ARCHIVED_PHASE:
         return []
     try:
@@ -1011,8 +1055,8 @@ def weighted_topic_priority_states(
         from learning_memory import topic_memory_state
         from study_app.core.dashboard import is_covered_learning_item
 
-        model = model or load_learning_model()
-        records = records if records is not None else load_raw_records(DEFAULT_DB_PATH)
+        model = model or load_learning_model(model_path)
+        records = records if records is not None else load_raw_records(db_path)
         records = [record for record in records if _record_on_or_before(record, as_of_date)]
         states = states if states is not None else (
             computation_context.bkt_topic_states()
@@ -1057,6 +1101,8 @@ def weighted_topic_priority_states(
             item.get("module"),
             item.get("topic"),
             phase=phase,
+            db_path=db_path,
+            model_path=model_path,
         ):
             continue
         key = (str(item.get("subject") or ""), str(item.get("module") or ""), str(item.get("topic") or ""))

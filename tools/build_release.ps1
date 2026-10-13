@@ -2,12 +2,16 @@
 [CmdletBinding()]
 param(
     [ValidatePattern('^\d+\.\d+\.\d+$')]
-    [string]$Version = '0.1.1',
+    [string]$Version = '0.1.2',
     [string]$PythonPath = '',
     [switch]$Bootstrap,
     [switch]$SkipTests,
     [switch]$SkipInstaller,
     [switch]$PublicRelease,
+    [switch]$UnsignedRelease,
+    [string]$BuildDirectory = '',
+    [string]$AcceptanceRecord = '',
+    [string]$ReleaseOutputDirectory = '',
     [string]$InnoCompilerPath = '',
     [string]$SignToolPath = '',
     [string]$CertificateThumbprint = '',
@@ -121,13 +125,27 @@ function Invoke-CodeSigning {
 }
 
 if ($PublicRelease) {
-    throw @'
-PUBLIC RELEASE BLOCKED: AGPL-3.0-only has been selected for project source.
-Source materials are collected and Windows VM smoke tests have run.
-This workflow currently produces draft prerelease candidates only.
-See docs/OPEN_SOURCE.md and docs/RELEASE_SUPPLEMENT.md.
-Local QA builds may continue without -PublicRelease.
-'@
+    if (-not $UnsignedRelease -or [string]::IsNullOrWhiteSpace($BuildDirectory) -or
+        [string]::IsNullOrWhiteSpace($AcceptanceRecord) -or [string]::IsNullOrWhiteSpace($ReleaseOutputDirectory)) {
+        throw 'Local formal preparation requires -UnsignedRelease, -BuildDirectory, -AcceptanceRecord and -ReleaseOutputDirectory. No upload or publication is performed.'
+    }
+    if ($Bootstrap -or $SkipTests -or $SkipInstaller -or $SignToolPath -or $CertificateThumbprint -or $TimestampUrl) {
+        throw 'Formal preparation validates an existing complete unsigned candidate; build/skip/sign switches are not accepted.'
+    }
+    if ([string]::IsNullOrWhiteSpace($PythonPath)) {
+        throw 'Pass the locked build interpreter with -PythonPath for local formal preparation.'
+    }
+    $candidateRecord = Get-Content -LiteralPath (Join-Path $BuildDirectory 'metadata\run-record.json') -Raw -Encoding utf8 | ConvertFrom-Json
+    if ($candidateRecord.version -ne $Version) {
+        throw 'Requested version differs from the frozen candidate version.'
+    }
+    $prepareArgs = @((Join-Path $PSScriptRoot 'prepare_unsigned_release.py'), '--build', $BuildDirectory,
+        '--acceptance', $AcceptanceRecord, '--output', $ReleaseOutputDirectory)
+    Invoke-NativeChecked -FilePath $PythonPath -NativeArgs $prepareArgs -Description 'Validate evidence and prepare unsigned formal release locally'
+    return
+}
+if ($UnsignedRelease -or $BuildDirectory -or $AcceptanceRecord -or $ReleaseOutputDirectory) {
+    throw 'Formal preparation parameters require -PublicRelease; regular builds remain QA candidates.'
 }
 
 $signingValues = @($SignToolPath, $CertificateThumbprint, $TimestampUrl)
@@ -439,7 +457,7 @@ $buildRecord = [ordered]@{
     installer_skipped = [bool]$SkipInstaller
     signed = -not [string]::IsNullOrWhiteSpace($SignToolPath)
     public_release = $false
-    public_release_blocker = 'Draft prerelease; distribute matching source/notice attachments and review docs/RELEASE_ACCEPTANCE.md'
+    public_release_blocker = 'QA candidate awaiting matching acceptance evidence; use the explicit local unsigned formal preparation path after acceptance.'
 }
 $recordJson = $buildRecord | ConvertTo-Json -Depth 3
 [IO.File]::WriteAllText(

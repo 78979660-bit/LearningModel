@@ -28,8 +28,20 @@ def upsert_setting(connection: sqlite3.Connection, key: str, value: Any) -> None
     )
 
 
-def get_setting(key: str, default: Any = None, db_path: Path | str = DEFAULT_DB_PATH) -> Any:
-    with connect_readonly(db_path) as connection:
+def get_setting(
+    key: str,
+    default: Any = None,
+    db_path: Path | str = DEFAULT_DB_PATH,
+    *,
+    connection: sqlite3.Connection | None = None,
+) -> Any:
+    if connection is None:
+        with connect_readonly(db_path) as read_connection:
+            row = read_connection.execute(
+                "SELECT value_json FROM app_settings WHERE key = ?",
+                (key,),
+            ).fetchone()
+    else:
         row = connection.execute(
             "SELECT value_json FROM app_settings WHERE key = ?",
             (key,),

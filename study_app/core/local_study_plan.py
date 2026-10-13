@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 from dataclasses import replace
 from datetime import date
+from pathlib import Path
 
 from study_app.core.active_subjects import (
     dashboard_activity_subject_names as activity_subject_names,
@@ -13,6 +14,7 @@ from study_app.core.active_subjects import (
 from study_app.core.dashboard import DashboardState
 from study_app.core.practice_bank import difficulty_label, first_diagnostic_difficulty_cap, generate_practice_assignment
 from study_app.core.study_plan_homework import _daily_plan, _lowest_cs_oj_focus, _matches_plan_subject
+from study_app.data.database import DEFAULT_DB_PATH
 
 LOGGER = logging.getLogger(__name__)
 
@@ -21,6 +23,11 @@ def _balanced_homework_topic(
     current_line: str,
     *,
     as_of_date: date,
+    db_path: str | Path = DEFAULT_DB_PATH,
+    model_path: str | Path | None = None,
+    model: dict | None = None,
+    records: list[dict] | None = None,
+    states: list[dict] | None = None,
 ) -> str | None:
     if not subject:
         return None
@@ -29,7 +36,10 @@ def _balanced_homework_topic(
     except Exception:
         LOGGER.exception("Final-review topic balancing is unavailable for %s", subject)
         return None
-    if not is_final_review(subject):
+    phase_path_kwargs = (
+        {} if Path(db_path) == Path(DEFAULT_DB_PATH) else {"db_path": db_path}
+    )
+    if not is_final_review(subject, **phase_path_kwargs):
         return None
 
     text = current_line or ""
@@ -48,6 +58,11 @@ def _balanced_homework_topic(
             subject,
             limit=16,
             as_of_date=as_of_date,
+            db_path=db_path,
+            model_path=model_path,
+            model=model,
+            records=records,
+            states=states,
         )
     except Exception:
         LOGGER.exception("Weighted topic priorities could not be read for %s", subject)
@@ -90,6 +105,11 @@ def apply_dynamic_difficulty_to_plan(
     *,
     as_of_date: date,
     priority_topics: tuple[str, ...] = (),
+    db_path: str | Path = DEFAULT_DB_PATH,
+    model_path: str | Path | None = None,
+    model: dict | None = None,
+    records: list[dict] | None = None,
+    states: list[dict] | None = None,
 ) -> dict[str, list[str]]:
     import re
     from statistics import median
@@ -98,6 +118,9 @@ def apply_dynamic_difficulty_to_plan(
     updated = {key: list(value) if isinstance(value, list) else value for key, value in plan.items()}
     if selected_subject == "计算机科学":
         return updated
+    phase_path_kwargs = (
+        {} if Path(db_path) == Path(DEFAULT_DB_PATH) else {"db_path": db_path}
+    )
     short_lines = []
     subjects = [
         "高等数学",
@@ -108,6 +131,19 @@ def apply_dynamic_difficulty_to_plan(
         "大学物理学",
         "化学原理",
     ]
+    subjects.extend(
+        str(item.get("name") or "")
+        for item in (model or {}).get("subjects", [])
+        if item.get("name")
+    )
+    subjects = list(dict.fromkeys(subjects))
+    practice_path_kwargs = (
+        {} if Path(db_path) == Path(DEFAULT_DB_PATH) else {"db_path": db_path}
+    )
+    if model_path is not None:
+        practice_path_kwargs["model_path"] = model_path
+    if records is not None:
+        practice_path_kwargs["records"] = records
     mixed_topic_keywords = [
         "编程实践",
         "实现训练",
@@ -158,9 +194,16 @@ def apply_dynamic_difficulty_to_plan(
             subject,
             line,
             as_of_date=as_of_date,
+            db_path=db_path,
+            model_path=model_path,
+            model=model,
+            records=records,
+            states=states,
         )
         assignment_topic = balanced_topic or topic
-        assignment = generate_practice_assignment(assignment_topic, 1)
+        assignment = generate_practice_assignment(
+            assignment_topic, 1, **practice_path_kwargs
+        )
         difficulty = assignment.difficulty_score
         mixed_difficulty = None
         generic_focus = any(
@@ -170,7 +213,9 @@ def apply_dynamic_difficulty_to_plan(
             count_match = re.search(r"上述\s*(\d+)\s*个知识点", line)
             focus_count = max(1, int(count_match.group(1))) if count_match else 4
             focus_assignments = [
-                generate_practice_assignment(f"{subject} / {name}", 1)
+                generate_practice_assignment(
+                    f"{subject} / {name}", 1, **practice_path_kwargs
+                )
                 for name in priority_topics[:focus_count]
             ]
             difficulty = round(median(item.difficulty_score for item in focus_assignments))
@@ -196,6 +241,7 @@ def apply_dynamic_difficulty_to_plan(
                 generate_practice_assignment(
                     f"{subject} / {component}" if subject else component,
                     day=1,
+                    **practice_path_kwargs,
                 ).difficulty_score
                 for component in component_topics
             ]
@@ -204,11 +250,19 @@ def apply_dynamic_difficulty_to_plan(
             else:
                 combination_bonus = 2
                 difficulty = min(92, round(median(component_scores) + combination_bonus))
-        if is_final_review(subject):
+        if is_final_review(subject, **phase_path_kwargs):
             difficulty = max(72, min(92, difficulty + 4))
             if mixed_difficulty is not None:
                 mixed_difficulty = max(76, min(92, mixed_difficulty + 4))
-        diagnostic_cap = first_diagnostic_difficulty_cap(subject, line) if subject else None
+        diagnostic_cap = (
+            first_diagnostic_difficulty_cap(
+                subject,
+                line,
+                **practice_path_kwargs,
+            )
+            if subject
+            else None
+        )
         if diagnostic_cap is not None:
             difficulty = min(difficulty, diagnostic_cap)
             if mixed_difficulty is not None:
@@ -248,7 +302,13 @@ def apply_dynamic_difficulty_to_plan(
     return updated
 
 
-def study_plan_llm_payload(state: DashboardState, subject_name: str | None = None) -> dict[str, object]:
+def study_plan_llm_payload(
+    state: DashboardState,
+    subject_name: str | None = None,
+    *,
+    db_path: str | Path = DEFAULT_DB_PATH,
+    model_path: str | Path | None = None,
+) -> dict[str, object]:
     from study_app.core.mock_exam import mock_exam_readiness
     from study_app.core.study_phase import get_subject_phase, is_in_exam_scope, load_learning_model
 
@@ -295,7 +355,10 @@ def study_plan_llm_payload(state: DashboardState, subject_name: str | None = Non
                 subject_name is None
                 or (
                     item.get("subject") == subject_name
-                    and is_in_exam_scope(subject_name, item.get("module"), item.get("topic"))
+                    and is_in_exam_scope(
+                        subject_name, item.get("module"), item.get("topic"),
+                        db_path=db_path, model_path=model_path,
+                    )
                 )
             )
         )
@@ -309,14 +372,19 @@ def study_plan_llm_payload(state: DashboardState, subject_name: str | None = Non
                 subject_name is None
                 or (
                     item.get("subject") == subject_name
-                    and is_in_exam_scope(subject_name, item.get("module"), item.get("topic"))
+                    and is_in_exam_scope(
+                        subject_name, item.get("module"), item.get("topic"),
+                        db_path=db_path, model_path=model_path,
+                    )
                 )
             )
         )
     ][:8]
-    phase_policy = get_subject_phase(subject_name) if subject_name else None
+    phase_policy = get_subject_phase(subject_name, db_path=db_path) if subject_name else None
     readiness = (
-        mock_exam_readiness(state, subject_name)
+        mock_exam_readiness(
+            state, subject_name, db_path=db_path, model_path=model_path
+        )
         if subject_name and phase_policy and phase_policy.get("phase") == "final_review"
         else None
     )
@@ -381,7 +449,13 @@ def shrink_risk_item(item: dict) -> dict[str, object]:
     return {key: item.get(key) for key in keys if key in item}
 
 
-def generate_study_plan(state: DashboardState, subject_name: str | None = None) -> dict[str, list[str]]:
+def generate_study_plan(
+    state: DashboardState,
+    subject_name: str | None = None,
+    *,
+    db_path: str | Path = DEFAULT_DB_PATH,
+    model_path: str | Path | None = None,
+) -> dict[str, list[str]]:
     from study_app.core.mock_exam import mock_exam_readiness
     from study_app.core.study_phase import get_subject_phase, is_in_exam_scope
 
@@ -389,9 +463,12 @@ def generate_study_plan(state: DashboardState, subject_name: str | None = None) 
     if subject_name:
         require_activity_subject(state, subject_name, "生成每日学习计划")
 
-    phase_policy = get_subject_phase(subject_name) if subject_name else {}
+    phase_policy = get_subject_phase(subject_name, db_path=db_path) if subject_name else {}
     final_review = phase_policy.get("phase") == "final_review"
-    readiness = mock_exam_readiness(state, subject_name) if final_review and subject_name else None
+    readiness = (
+        mock_exam_readiness(state, subject_name, db_path=db_path, model_path=model_path)
+        if final_review and subject_name else None
+    )
     todos = [
         item for item in state.todos
         if _matches_plan_subject(item.title, subject_name)
@@ -418,7 +495,10 @@ def generate_study_plan(state: DashboardState, subject_name: str | None = None) 
             subject_name is None
             or (
                 item.get("subject") == subject_name
-                and is_in_exam_scope(subject_name, item.get("module"), item.get("topic"))
+                and is_in_exam_scope(
+                    subject_name, item.get("module"), item.get("topic"),
+                    phase=phase_policy, db_path=db_path, model_path=model_path,
+                )
             )
         )
     ]
@@ -429,7 +509,10 @@ def generate_study_plan(state: DashboardState, subject_name: str | None = None) 
             subject_name is None
             or (
                 item.get("subject") == subject_name
-                and is_in_exam_scope(subject_name, item.get("module"), item.get("topic"))
+                and is_in_exam_scope(
+                    subject_name, item.get("module"), item.get("topic"),
+                    phase=phase_policy, db_path=db_path, model_path=model_path,
+                )
             )
         )
     ]
@@ -478,7 +561,7 @@ def generate_study_plan(state: DashboardState, subject_name: str | None = None) 
                 ]
         focus_topics = list(dict.fromkeys(mastery_topics + todo_topics + memory_topics))[:6]
         if subject_name == "计算机科学":
-            oj_focus = _lowest_cs_oj_focus()
+            oj_focus = _lowest_cs_oj_focus(state.model_data)
             if oj_focus:
                 focus_topics = [oj_focus] + [
                     item for item in focus_topics
@@ -553,7 +636,7 @@ def generate_study_plan(state: DashboardState, subject_name: str | None = None) 
 
             subject_model = next(
                 (
-                    item for item in load_learning_model().get("subjects", [])
+                    item for item in load_learning_model(model_path).get("subjects", [])
                     if item.get("name") == subject_name
                 ),
                 None,
@@ -616,6 +699,9 @@ def generate_study_plan(state: DashboardState, subject_name: str | None = None) 
         fallback_subject,
         phase_policy=phase_policy,
         readiness=readiness,
+        db_path=db_path,
+        model_path=model_path,
+        records=state.raw_records,
     )
     if subject_name == "数据结构与算法基础":
         diagnostic_error_types = "概念遗忘、题面建模失败、算法适用条件误判、过程推演错误、边界条件遗漏、时间管理问题"

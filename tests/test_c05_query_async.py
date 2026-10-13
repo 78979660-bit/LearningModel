@@ -70,7 +70,9 @@ def test_slow_llm_does_not_block_ui_and_duplicate_click_starts_one_job(monkeypat
         application.processEvents()
         assert len(calls) == 1
         assert calls[0] != threading.get_ident()
-        assert "本地查询" in body.text()
+        local_answer = content._query_lifecycle["local_answer"]
+        assert local_answer["answer"]
+        assert all(line in body.text() for line in local_answer["answer"])
         question.setPlainText("页面仍可编辑")
         application.processEvents()
         assert question.toPlainText() == "页面仍可编辑"
@@ -103,7 +105,9 @@ def test_timeout_keeps_local_answer_and_discards_late_llm(monkeypatch, tmp_path)
         question.setPlainText("今天复习什么？")
         button.click()
         _pump_until(application, lambda: "LLM 查询超时" in body.text())
-        assert "本地查询" in body.text()
+        local_answer = _content._query_lifecycle["local_answer"]
+        assert local_answer["answer"]
+        assert all(line in body.text() for line in local_answer["answer"])
         release.set()
         time.sleep(0.04)
         application.processEvents()

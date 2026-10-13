@@ -165,6 +165,12 @@ class TaskHandle:
                 self._error,
             )
 
+    @property
+    def work_finished(self) -> bool:
+        """Cancellation/timeout is terminal for results, not necessarily for I/O."""
+        with self._condition:
+            return self._future is not None and self._future.done()
+
     def wait(self, timeout: float | None = None) -> TaskSnapshot:
         with self._condition:
             self._condition.wait_for(
@@ -310,6 +316,15 @@ class AsyncTaskService:
             for handle in self._active.values():
                 self._finish_without_result(handle, TaskStatus.CANCELLED)
         self._executor.shutdown(wait=False, cancel_futures=True)
+
+    def wait_for_shutdown(self) -> None:
+        """Drain running work after the GUI event loop has exited.
+
+        Keep close() nonblocking for GUI owners. Process-level resources such
+        as a single-instance guard must outlive any running initialization.
+        """
+        self.close()
+        self._executor.shutdown(wait=True, cancel_futures=True)
 
     def __enter__(self) -> AsyncTaskService:
         return self

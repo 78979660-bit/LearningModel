@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import math
 from dataclasses import dataclass
+from pathlib import Path
 
 from study_app.core.dashboard import DashboardState
 from study_app.core.study_plan_items import infer_subject_topic_from_plan_line
@@ -23,12 +24,22 @@ def plan_day_feedback_lines(saved_plan: dict, state: DashboardState, subject_sco
     return [item["line"] for item in plan_day_feedback_details(saved_plan, state, subject_scope)]
 
 
-def planned_homework_score(difficulty_score: float | None, is_correct: bool) -> float:
-    return planned_homework_score_result(difficulty_score, is_correct).score
+def planned_homework_score(
+    difficulty_score: float | None,
+    is_correct: bool,
+    *,
+    model_path: str | Path | None = None,
+) -> float:
+    return planned_homework_score_result(
+        difficulty_score, is_correct, model_path=model_path
+    ).score
 
 
 def planned_homework_score_result(
-    difficulty_score: float | None, is_correct: bool
+    difficulty_score: float | None,
+    is_correct: bool,
+    *,
+    model_path: str | Path | None = None,
 ) -> PlannedHomeworkScoreResult:
     difficulty = 55.0 if difficulty_score is None else max(0.0, min(100.0, float(difficulty_score)))
     fallback_reason = ""
@@ -39,7 +50,7 @@ def planned_homework_score_result(
         LOGGER.exception("Model homework scoring is unavailable; using built-in score")
     else:
         try:
-            policy = load_json(MODEL_PATH).get("warning_policy", {})
+            policy = load_json(model_path or MODEL_PATH).get("warning_policy", {})
         except FileNotFoundError:
             fallback_reason = "模型文件不存在"
             LOGGER.info("Model file is absent; using built-in homework score")

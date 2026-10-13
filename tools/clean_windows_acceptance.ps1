@@ -73,8 +73,59 @@ function Run-SelfTest($Program, $Name) {
     if (-not (Test-Path -LiteralPath $output)) { throw 'Self-test report missing' }
     $report = Get-Content -LiteralPath $output -Raw -Encoding UTF8 | ConvertFrom-Json
     if ($report.status -ne 'ok' -or $report.version -ne $Version -or [int]$report.schema_version -ne 5) { throw 'Self-test status/version/schema mismatch' }
-    if ([IO.Path]::GetFullPath($report.user_root) -ne [IO.Path]::GetFullPath($dataRoot)) { throw 'Unexpected default user data directory' }
+    # Current --self-test deliberately uses a disposable synthetic profile.
+    # Its counts must never stand in for the installed user's database.
+    if ([IO.Path]::GetFullPath($report.user_root) -eq [IO.Path]::GetFullPath($dataRoot)) { throw 'Self-test unexpectedly used the real profile' }
+    if ($report.qml.status -ne 'ok' -or @($report.qml.qml_warnings).Count -ne 0) { throw 'Packaged QML self-test failed' }
     return $report
+}
+
+function Get-ActualDatabaseCounts([string]$Path) {
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) { throw 'Actual acceptance database is missing' }
+    if (-not ('LearningModelQA.ReadOnlySqlite' -as [type])) {
+        Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+namespace LearningModelQA {
+    public static class ReadOnlySqlite {
+        [DllImport("winsqlite3.dll", CallingConvention=CallingConvention.Cdecl)]
+        private static extern int sqlite3_open_v2(byte[] path, out IntPtr db, int flags, IntPtr vfs);
+        [DllImport("winsqlite3.dll", CallingConvention=CallingConvention.Cdecl)]
+        private static extern int sqlite3_prepare_v2(IntPtr db, byte[] sql, int bytes, out IntPtr statement, IntPtr tail);
+        [DllImport("winsqlite3.dll", CallingConvention=CallingConvention.Cdecl)]
+        private static extern int sqlite3_step(IntPtr statement);
+        [DllImport("winsqlite3.dll", CallingConvention=CallingConvention.Cdecl)]
+        private static extern long sqlite3_column_int64(IntPtr statement, int column);
+        [DllImport("winsqlite3.dll", CallingConvention=CallingConvention.Cdecl)]
+        private static extern int sqlite3_finalize(IntPtr statement);
+        [DllImport("winsqlite3.dll", CallingConvention=CallingConvention.Cdecl)]
+        private static extern int sqlite3_close(IntPtr db);
+        public static long Count(string path, string table) {
+            // Fixed allowlist: no dynamic SQL supplied by application contents.
+            if (table != "subjects" && table != "modules" && table != "topics" && table != "learning_records" && table != "problem_attempts")
+                throw new ArgumentException("Unknown count table");
+            IntPtr db = IntPtr.Zero, statement = IntPtr.Zero;
+            try {
+                byte[] file = System.Text.Encoding.UTF8.GetBytes(path + "\0");
+                if (sqlite3_open_v2(file, out db, 1, IntPtr.Zero) != 0) throw new InvalidOperationException("Read-only database open failed");
+                byte[] sql = System.Text.Encoding.UTF8.GetBytes("SELECT COUNT(*) FROM " + table + "\0");
+                if (sqlite3_prepare_v2(db, sql, sql.Length, out statement, IntPtr.Zero) != 0 || sqlite3_step(statement) != 100)
+                    throw new InvalidOperationException("Actual database count failed");
+                return sqlite3_column_int64(statement, 0);
+            } finally {
+                if (statement != IntPtr.Zero) sqlite3_finalize(statement);
+                if (db != IntPtr.Zero) sqlite3_close(db);
+            }
+        }
+    }
+}
+'@
+    }
+    $counts = [ordered]@{}
+    foreach ($table in @('subjects', 'modules', 'topics', 'learning_records', 'problem_attempts')) {
+        $counts[$table] = [LearningModelQA.ReadOnlySqlite]::Count([IO.Path]::GetFullPath($Path), $table)
+    }
+    return $counts
 }
 New-Item -ItemType Directory -Path $results -Force | Out-Null
 if ($Phase -eq 'Preflight' -or $Phase -eq 'Install') {
@@ -98,12 +149,11 @@ if ($Phase -eq 'Preflight' -or $Phase -eq 'Install') {
     Invoke-CheckedProcess $installer @('/SP-', '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/TASKS=""', ('/DIR="' + $installRoot + '"'), ('/LOG="' + (Join-Path $results 'install.log') + '"'))
     $program = Join-Path $installRoot 'LearningModel.exe'
     $selfTest = Run-SelfTest $program 'first-start'
-    if ([int]$selfTest.counts.subjects -ne 0 -or [int]$selfTest.counts.learning_records -ne 0) { throw 'First start contains non-empty subject/record data' }
     $state.status = 'awaiting_manual_checks'
     Write-JsonFile $statePath $state
     # Explicit Install phase launches the application for the requested UI checks.
-    Start-Process -FilePath $program -WorkingDirectory $testRoot | Out-Null
-    Write-Output 'Automatic installation and fresh startup passed. Complete MANUAL-CHECKLIST.md, close the app, then run -Phase Finish.'
+    Start-Process -FilePath $program -ArgumentList '--qml' -WorkingDirectory $testRoot | Out-Null
+    Write-Output 'Installation and isolated packaged QML self-test passed. Verify the actual fresh profile and UI in MANUAL-CHECKLIST.md, close the app, then run -Phase Finish.'
     return
 }
 
@@ -120,7 +170,8 @@ $program = Join-Path $state.install_root 'LearningModel.exe'
 $uninstaller = Join-Path $state.install_root 'unins000.exe'
 $database = Join-Path $dataRoot 'data\learning_app.sqlite'
 if (-not (Test-Path -LiteralPath $database)) { throw 'Acceptance database is missing before uninstall' }
-$baseline = Run-SelfTest $program 'before-uninstall'
+$null = Run-SelfTest $program 'before-uninstall'
+$baseline = Get-ActualDatabaseCounts $database
 $beforeHash = (Get-FileHash -LiteralPath $database -Algorithm SHA256).Hash
 Invoke-CheckedProcess $uninstaller @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART')
 if (Test-Path -LiteralPath $program) { throw 'Uninstall left the application executable' }
@@ -129,9 +180,12 @@ $state | Add-Member -NotePropertyName uninstall_preserved_database -NoteProperty
 Invoke-CheckedProcess $installer @('/SP-', '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/TASKS=""', ('/DIR="' + $state.install_root + '"'))
 if ((Get-FileHash -LiteralPath $database -Algorithm SHA256).Hash -ne $beforeHash) { throw 'Reinstall changed the database before startup' }
 $report = Run-SelfTest $program 'after-reinstall'
+$afterCounts = Get-ActualDatabaseCounts $database
 foreach ($counter in @('subjects', 'modules', 'topics', 'learning_records', 'problem_attempts')) {
-    if ($baseline.counts.$counter -ne $report.counts.$counter) { throw "Record count changed after reinstall: $counter" }
+    if ($baseline[$counter] -ne $afterCounts[$counter]) { throw "Record count changed after reinstall: $counter" }
 }
+$state | Add-Member -NotePropertyName actual_database_counts_before -NotePropertyValue $baseline -Force
+$state | Add-Member -NotePropertyName actual_database_counts_after -NotePropertyValue $afterCounts -Force
 $state | Add-Member -NotePropertyName reinstall_self_test -NotePropertyValue $report.status -Force
 $state.status = 'automated_lifecycle_passed_manual_review_pending'
 Write-JsonFile $statePath $state

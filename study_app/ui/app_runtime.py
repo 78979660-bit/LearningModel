@@ -156,12 +156,6 @@ def run_app() -> None:
         install_performance_log(app)
         app.setQuitOnLastWindowClosed(False)
         app.setStyleSheet(build_stylesheet())
-        try:
-            from study_app.integrations.chatgpt_desktop_bridge import cleanup_generated_pdfs
-
-            cleanup_generated_pdfs()
-        except Exception as error:
-            LOGGER.error("Generated PDF cleanup failed (%s)", type(error).__name__)
         window = create_main_window(load_dashboard_state())
 
         weekly_collection_thread = WeeklyCollectionWorker()

@@ -6,6 +6,7 @@ from statistics import median
 from dataclasses import dataclass
 
 from study_app.paths import MODEL_PATH
+from study_app.data.db_runtime import DEFAULT_DB_PATH
 
 @dataclass(frozen=True)
 class PracticeAssignment:
@@ -26,13 +27,47 @@ class PracticeAssignment:
         )
 
 
-def generate_practice_assignment(topic: str, day: int = 1) -> PracticeAssignment:
+def _practice_path_kwargs(
+    db_path: str | Path | None = None,
+    model_path: str | Path | None = None,
+    records: list[dict] | tuple[dict, ...] | None = None,
+) -> dict[str, object]:
+    values: dict[str, object] = {}
+    if db_path is not None and Path(db_path) != Path(DEFAULT_DB_PATH):
+        values["db_path"] = db_path
+    if model_path is not None:
+        values["model_path"] = model_path
+    if records is not None:
+        values["records"] = records
+    return values
+
+
+def generate_practice_assignment(
+    topic: str,
+    day: int = 1,
+    *,
+    db_path: str | Path | None = None,
+    model_path: str | Path | None = None,
+    records: list[dict] | tuple[dict, ...] | None = None,
+) -> PracticeAssignment:
     normalized = normalize_topic(topic)
-    difficulty, basis = dynamic_reference_difficulty(normalized, day)
+    difficulty, basis = dynamic_reference_difficulty(
+        normalized,
+        day,
+        **_practice_path_kwargs(db_path, model_path, records),
+    )
     label = difficulty_label(difficulty)
     subject, _topic_name = split_subject_topic(normalized)
     template_id, brief = template_for_topic(normalized, subject or None)
-    final_review_count = 6 if subject and _is_final_review_subject(subject) else None
+    final_review_count = (
+        6
+        if subject
+        and _is_final_review_subject(
+            subject,
+            **_practice_path_kwargs(db_path=db_path),
+        )
+        else None
+    )
     return PracticeAssignment(
         topic=topic,
         difficulty_score=difficulty,
@@ -44,11 +79,13 @@ def generate_practice_assignment(topic: str, day: int = 1) -> PracticeAssignment
     )
 
 
-def _is_final_review_subject(subject: str) -> bool:
+def _is_final_review_subject(
+    subject: str, *, db_path: str | Path | None = None
+) -> bool:
     try:
         from study_app.core.study_phase import is_final_review
 
-        return is_final_review(subject)
+        return is_final_review(subject, **_practice_path_kwargs(db_path=db_path))
     except Exception:
         return False
 
@@ -110,25 +147,50 @@ def keyword_reference_difficulty(topic: str) -> int:
     return max(30, min(92, base))
 
 
-def reference_difficulty(topic: str, day: int) -> int:
-    difficulty, _basis = dynamic_reference_difficulty(topic, day)
+def reference_difficulty(
+    topic: str,
+    day: int,
+    *,
+    db_path: str | Path | None = None,
+    model_path: str | Path | None = None,
+    records: list[dict] | tuple[dict, ...] | None = None,
+) -> int:
+    difficulty, _basis = dynamic_reference_difficulty(
+        topic,
+        day,
+        **_practice_path_kwargs(db_path, model_path, records),
+    )
     return difficulty
 
 
-def dynamic_reference_difficulty(topic: str, day: int) -> tuple[int, str]:
+def dynamic_reference_difficulty(
+    topic: str,
+    day: int,
+    *,
+    db_path: str | Path | None = None,
+    model_path: str | Path | None = None,
+    records: list[dict] | tuple[dict, ...] | None = None,
+) -> tuple[int, str]:
     subject, topic_name = split_subject_topic(topic)
-    fallback = model_topic_difficulty_standard(subject, topic_name or topic) or keyword_reference_difficulty(topic_name or topic)
+    path_kwargs = _practice_path_kwargs(db_path, model_path, records)
+    model_kwargs = {"model_path": model_path} if model_path is not None else {}
+    fallback = model_topic_difficulty_standard(
+        subject, topic_name or topic, **model_kwargs
+    ) or keyword_reference_difficulty(topic_name or topic)
     final_review = False
     if subject:
         try:
             from study_app.core.study_phase import is_final_review
 
-            final_review = is_final_review(subject)
+            final_review = is_final_review(
+                subject,
+                **_practice_path_kwargs(db_path=db_path),
+            )
         except Exception:
             final_review = False
     # Plans should train slightly above the learner's current demonstrated level.
     stage_adjustment = {-1: -2, 1: -2, 2: 3, 3: 8}.get(day, 0)
-    evidence = topic_difficulty_evidence(subject, topic_name or topic)
+    evidence = topic_difficulty_evidence(subject, topic_name or topic, **path_kwargs)
 
     if not evidence["has_practice_evidence"]:
         score = fallback + stage_adjustment
@@ -165,7 +227,9 @@ def dynamic_reference_difficulty(topic: str, day: int) -> tuple[int, str]:
     )
 
 
-def model_topic_difficulty_standard(subject: str, topic_text: str) -> int | None:
+def model_topic_difficulty_standard(
+    subject: str, topic_text: str, *, model_path: str | Path | None = None
+) -> int | None:
     if not subject:
         return None
     try:
@@ -173,7 +237,7 @@ def model_topic_difficulty_standard(subject: str, topic_text: str) -> int | None
 
         from learning_bkt import normalize_topic_text
 
-        model = json.loads(MODEL_PATH.read_text(encoding="utf-8"))
+        model = json.loads(Path(model_path or MODEL_PATH).read_text(encoding="utf-8"))
         normalized = normalize_topic_text(topic_text)
         candidates: list[tuple[int, int]] = []
         for subject_item in model.get("subjects", []):
@@ -208,6 +272,7 @@ def is_non_calibration_difficulty_source(source: object) -> bool:
 
 def split_subject_topic(text: str) -> tuple[str, str]:
     subjects = [
+        "概率论与数理统计",
         "高等数学",
         "微积分",
         "高级程序设计",
@@ -217,15 +282,22 @@ def split_subject_topic(text: str) -> tuple[str, str]:
         "化学原理",
         "离散数学",
     ]
-    subject = next((item for item in subjects if item in text), "")
     if " / " in text:
         left, right = text.split(" / ", 1)
-        if left.strip() in subjects:
+        if left.strip():
             return left.strip(), right.strip()
+    subject = next((item for item in subjects if item in text), "")
     return subject, text.replace(subject, "", 1).strip(" /") if subject else text
 
 
-def topic_difficulty_evidence(subject: str, topic_name: str) -> dict[str, object]:
+def topic_difficulty_evidence(
+    subject: str,
+    topic_name: str,
+    *,
+    db_path: str | Path | None = None,
+    model_path: str | Path | None = None,
+    records: list[dict] | tuple[dict, ...] | None = None,
+) -> dict[str, object]:
     try:
         import json
 
@@ -236,10 +308,12 @@ def topic_difficulty_evidence(subject: str, topic_name: str) -> dict[str, object
             topic_bkt_state,
             topic_matches_text,
         )
-        from study_app.data.database import DEFAULT_DB_PATH, load_raw_records
+        from study_app.data.database import load_raw_records
 
-        model = json.loads(MODEL_PATH.read_text(encoding="utf-8"))
-        records = load_raw_records(DEFAULT_DB_PATH)
+        model = json.loads(Path(model_path or MODEL_PATH).read_text(encoding="utf-8"))
+        resolved_records = list(records) if records is not None else load_raw_records(
+            db_path or DEFAULT_DB_PATH
+        )
     except Exception:
         return {
             "has_evidence": False,
@@ -296,7 +370,7 @@ def topic_difficulty_evidence(subject: str, topic_name: str) -> dict[str, object
 
     difficulties: list[float] = []
     correctness_values: list[float] = []
-    for record in reversed(records):
+    for record in reversed(resolved_records):
         if subject and record.get("subject") != subject:
             continue
         record_text = " ".join(str(record.get(key) or "") for key in ["module", "topic", "related_topics", "note"])
@@ -338,7 +412,9 @@ def topic_difficulty_evidence(subject: str, topic_name: str) -> dict[str, object
     mastery = None
     if matched_topic:
         policy = model.get("warning_policy", {})
-        state = topic_bkt_state(matched_subject, matched_module, matched_topic, records, policy)
+        state = topic_bkt_state(
+            matched_subject, matched_module, matched_topic, resolved_records, policy
+        )
         if state and state.get("observation_count", 0):
             mastery = float(state["mastery_probability"])
         else:
@@ -485,7 +561,14 @@ def topic_evidence_terms(topic_name: str) -> list[str]:
     return deduped
 
 
-def first_diagnostic_difficulty_cap(subject: str, text: str) -> int | None:
+def first_diagnostic_difficulty_cap(
+    subject: str,
+    text: str,
+    *,
+    db_path: str | Path | None = None,
+    model_path: str | Path | None = None,
+    records: list[dict] | tuple[dict, ...] | None = None,
+) -> int | None:
     """Cap plans containing learned topics that still lack real practice evidence."""
     try:
         import json
@@ -493,7 +576,7 @@ def first_diagnostic_difficulty_cap(subject: str, text: str) -> int | None:
         from learning_bkt import normalize_topic_text
         from study_app.core.study_phase import is_final_review
 
-        model = json.loads(MODEL_PATH.read_text(encoding="utf-8"))
+        model = json.loads(Path(model_path or MODEL_PATH).read_text(encoding="utf-8"))
         normalized_text = normalize_topic_text(text)
         matched_topics: list[str] = []
         for subject_item in model.get("subjects", []):
@@ -507,10 +590,18 @@ def first_diagnostic_difficulty_cap(subject: str, text: str) -> int | None:
         if not matched_topics:
             return None
         if any(
-            not topic_difficulty_evidence(subject, topic_name).get("has_practice_evidence", False)
+            not topic_difficulty_evidence(
+                subject,
+                topic_name,
+                **_practice_path_kwargs(db_path, model_path, records),
+            ).get("has_practice_evidence", False)
             for topic_name in matched_topics
         ):
-            return 72 if is_final_review(subject) else 68
+            return (
+                72
+                if is_final_review(subject, **_practice_path_kwargs(db_path=db_path))
+                else 68
+            )
     except Exception:
         return None
     return None
@@ -534,6 +625,9 @@ def template_for_topic(topic: str, subject: str | None = None) -> tuple[str, str
 
     inferred_subject, _inferred_topic = split_subject_topic(topic)
     subject_filter = (subject or inferred_subject).strip()
+    from study_app.core.probability_statistics_taxonomy import SUBJECT_ALIASES, probability_template_for_topic
+    if subject_filter in SUBJECT_ALIASES:
+        return probability_template_for_topic(topic)
     explicit_templates = {
         "CPP-OOP-PRACTICE": "围绕当前理论主题开展开放式 C++ 实践，训练类接口与封装、对象生命周期与资源管理、类协作、继承与多态、测试与调试；具体实现任务随本次实验或作业变化",
         "DS-AVL-ROT": "AVL 插入/删除调整、旋转类型、失衡结点与平衡因子判断",
@@ -761,6 +855,7 @@ def template_for_topic(topic: str, subject: str | None = None) -> tuple[str, str
 def known_template_ids() -> set[str]:
     from study_app.core.composite_templates import composite_template_ids
     from study_app.core.discrete_math_taxonomy import discrete_template_ids
+    from study_app.core.probability_statistics_taxonomy import PROBABILITY_TEMPLATE_INFO
     from study_app.core.ds_course_taxonomy import ds_template_ids
 
     return {
@@ -801,7 +896,7 @@ def known_template_ids() -> set[str]:
         "PHYS-NUCLEAR",
         "PHYS-PARTICLE",
         "GEN-MIXED-PRACTICE",
-    } | composite_template_ids() | ds_template_ids() | discrete_template_ids()
+    } | composite_template_ids() | ds_template_ids() | discrete_template_ids() | set(PROBABILITY_TEMPLATE_INFO)
 
 
 def exercise_count(day: int) -> int:

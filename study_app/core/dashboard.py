@@ -23,10 +23,12 @@ from study_app.core.computation_context import DashboardComputationContext
 from study_app.paths import MODEL_PATH, RECORDS_PATH
 
 
+_LEARNING_TEXT_DROP_TABLE = dict.fromkeys(map(ord, set(" \t\r\n\u3000·/／、,，;；:：-—_()（）[]【】")))
+
+
 def normalize_learning_text(value: object) -> str:
     text = str(value or "").lower()
-    drop_chars = set(" \t\r\n\u3000·/／、,，;；:：-—_()（）[]【】")
-    return "".join(ch for ch in text if ch not in drop_chars)
+    return text.translate(_LEARNING_TEXT_DROP_TABLE)
 
 
 @dataclass(frozen=True)
@@ -91,6 +93,7 @@ def load_dashboard_state(
     records_path=RECORDS_PATH,
     today=None,
     db_path=None,
+    *, context_sink=None,
 ) -> DashboardState:
     db_path = DEFAULT_DB_PATH if db_path is None else db_path
     today = parse_date(today or date.today())
@@ -113,9 +116,12 @@ def load_dashboard_state(
     from study_app.core.study_phase import get_subject_phase
 
     if catalog_snapshot is None:
+        phase_path_kwargs = (
+            {} if Path(db_path) == Path(DEFAULT_DB_PATH) else {"db_path": db_path}
+        )
         subject_phases = {
             str(subject.get("name") or ""): get_subject_phase(
-                str(subject.get("name") or ""), db_path=db_path
+                str(subject.get("name") or ""), **phase_path_kwargs
             )
             for subject in model.get("subjects", [])
             if subject.get("name")
@@ -221,6 +227,8 @@ def load_dashboard_state(
                         module.get("name"),
                         topic.get("name"),
                         phase=subject_phases.get(subject["name"]),
+                        db_path=db_path,
+                        model_path=model_path,
                     ):
                         continue
                     memory_risks.append(item)
@@ -234,6 +242,8 @@ def load_dashboard_state(
             item.get("module"),
             item.get("topic"),
             phase=subject_phases.get(str(item.get("subject") or "")),
+            db_path=db_path,
+            model_path=model_path,
         )
     ]
     max_bkt = int(policy.get("bkt_model", {}).get("max_report_items", 8))
@@ -255,6 +265,8 @@ def load_dashboard_state(
                 as_of_date=today,
                 computation_context=computation_context,
                 phase=subject_phases.get(subject["name"]),
+                db_path=db_path,
+                model_path=model_path,
             )
         )
     weighted_priorities.sort(key=lambda item: float(item.get("weighted_priority", 0)), reverse=True)
@@ -292,6 +304,10 @@ def load_dashboard_state(
         )
 
     todos.sort(key=lambda item: item.priority, reverse=True)
+    # Optional worker-local reuse by projections of this exact snapshot. Keep
+    # runtime caches out of DashboardState and its persisted preview digest.
+    if context_sink is not None:
+        context_sink(computation_context)
     return DashboardState(
         start=start,
         today=today,

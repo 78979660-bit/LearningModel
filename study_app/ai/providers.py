@@ -1,10 +1,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import hashlib
+import json
 import logging
+import sqlite3
 from typing import Any
+from pathlib import Path
 
 from study_app.data.database import get_setting, set_setting
+from study_app.data.db_runtime import DEFAULT_DB_PATH
 from study_app.security import protect_secret, unprotect_secret
 
 
@@ -60,6 +65,7 @@ DEFAULT_LLM_SETTINGS = {
     "custom_base_url": "",
     "api_key": "",
     "api_key_protected": "",
+    "api_key_identity": None,
     "single_call_token_limit": 8000,
     "daily_budget_cny": 3.0,
     "allow_upload_images": False,
@@ -67,6 +73,21 @@ DEFAULT_LLM_SETTINGS = {
     "enabled_features": list(LLM_FEATURES.keys()),
     "feature_defaults_version": 3,
 }
+
+
+def credential_identity(provider: str, custom_base_url: str = "") -> tuple[str, str]:
+    """Credential scope includes the provider/protocol and effective API root.
+
+    Keep path, port and scheme differences significant. Only remove whitespace
+    and trailing slashes, exactly as the request layer does for the API root.
+    """
+    provider = provider if provider in PROVIDERS else "local"
+    endpoint = (
+        custom_base_url.strip().rstrip("/")
+        if provider in {"custom", "anthropic"}
+        else PROVIDERS[provider]["base_url"]
+    )
+    return provider, endpoint
 
 
 @dataclass(frozen=True)
@@ -88,9 +109,17 @@ class LLMSettings:
 
     @property
     def base_url(self) -> str:
-        if self.provider in {"custom", "anthropic"}:
-            return self.custom_base_url.strip().rstrip("/")
-        return PROVIDERS.get(self.provider, PROVIDERS["local"])["base_url"]
+        return self.credential_identity[1]
+
+    @property
+    def credential_identity(self) -> tuple[str, str]:
+        return credential_identity(self.provider, self.custom_base_url)
+
+    @property
+    def credential_scope(self) -> str:
+        """Non-secret scope token for checking a native-dialog write later."""
+        encoded = json.dumps(self.credential_identity, separators=(",", ":")).encode("utf-8")
+        return hashlib.sha256(encoded).hexdigest()
 
     @property
     def api_protocol(self) -> str:
@@ -111,8 +140,30 @@ class LLMSettings:
         return f"{self.api_key[:4]}...{self.api_key[-4:]}"
 
 
-def load_llm_settings() -> LLMSettings:
-    raw = dict(get_setting(SETTINGS_KEY, DEFAULT_LLM_SETTINGS) or {})
+def load_llm_settings(
+    db_path: str | Path = DEFAULT_DB_PATH,
+    *,
+    connection: sqlite3.Connection | None = None,
+) -> LLMSettings:
+    if connection is not None:
+        raw_value = get_setting(
+            SETTINGS_KEY,
+            DEFAULT_LLM_SETTINGS,
+            db_path=db_path,
+            connection=connection,
+        )
+    else:
+        raw_value = (
+            get_setting(SETTINGS_KEY, DEFAULT_LLM_SETTINGS)
+            if Path(db_path) == Path(DEFAULT_DB_PATH)
+            else get_setting(SETTINGS_KEY, DEFAULT_LLM_SETTINGS, db_path=db_path)
+        )
+    raw = dict(raw_value or {})
+    merged = {**DEFAULT_LLM_SETTINGS, **raw}
+    provider = merged.get("provider") if merged.get("provider") in PROVIDERS else "local"
+    identity = list(credential_identity(provider, str(merged.get("custom_base_url") or "")))
+    bound_identity = raw.get("api_key_identity")
+    scope_matches = bound_identity is None or bound_identity == identity
     legacy_key = str(raw.get("api_key") or "")
     protected_key = str(raw.get("api_key_protected") or "")
     credential_changed = False
@@ -120,6 +171,11 @@ def load_llm_settings() -> LLMSettings:
         protected_key = protect_secret(legacy_key)
         raw["api_key"] = ""
         raw["api_key_protected"] = protected_key
+        credential_changed = True
+    if (legacy_key or protected_key) and bound_identity is None:
+        # Existing profiles acquire a binding to their currently saved endpoint.
+        # A later identity mismatch must never decrypt a key for a new endpoint.
+        raw["api_key_identity"] = identity
         credential_changed = True
     if should_upgrade_feature_defaults(raw):
         legacy_features = raw.get("enabled_features")
@@ -135,9 +191,14 @@ def load_llm_settings() -> LLMSettings:
         }
         credential_changed = True
     if credential_changed:
-        set_setting(SETTINGS_KEY, raw)
-    api_key = legacy_key
-    if not api_key and protected_key:
+        if connection is not None:
+            set_setting(SETTINGS_KEY, raw, db_path=db_path, connection=connection)
+        elif Path(db_path) == Path(DEFAULT_DB_PATH):
+            set_setting(SETTINGS_KEY, raw)
+        else:
+            set_setting(SETTINGS_KEY, raw, db_path=db_path)
+    api_key = legacy_key if scope_matches else ""
+    if scope_matches and not api_key and protected_key:
         try:
             api_key = unprotect_secret(protected_key)
         except Exception as error:
@@ -171,7 +232,12 @@ def should_upgrade_feature_defaults(raw: dict[str, Any] | None) -> bool:
     return legacy_features in (None, [], ["record_parser"], ("record_parser",))
 
 
-def save_llm_settings(settings: LLMSettings | dict[str, Any]) -> None:
+def save_llm_settings(
+    settings: LLMSettings | dict[str, Any],
+    db_path: str | Path = DEFAULT_DB_PATH,
+    *,
+    connection: sqlite3.Connection | None = None,
+) -> None:
     if isinstance(settings, LLMSettings):
         payload = vars(settings).copy()
     else:
@@ -189,11 +255,30 @@ def save_llm_settings(settings: LLMSettings | dict[str, Any]) -> None:
     api_key = str(payload.pop("api_key", "") or "")
     payload["api_key"] = ""
     payload["api_key_protected"] = protect_secret(api_key) if api_key else ""
-    set_setting(SETTINGS_KEY, payload)
+    payload["api_key_identity"] = (
+        list(credential_identity(provider, str(payload.get("custom_base_url") or "")))
+        if api_key else None
+    )
+    if Path(db_path) == Path(DEFAULT_DB_PATH):
+        if connection is None:
+            set_setting(SETTINGS_KEY, payload)
+        else:
+            set_setting(SETTINGS_KEY, payload, connection=connection)
+    else:
+        if connection is None:
+            set_setting(SETTINGS_KEY, payload, db_path=db_path)
+        else:
+            set_setting(SETTINGS_KEY, payload, db_path=db_path, connection=connection)
 
 
-def provider_status(settings: LLMSettings | None = None) -> str:
-    settings = settings or load_llm_settings()
+def provider_status(
+    settings: LLMSettings | None = None, db_path: str | Path = DEFAULT_DB_PATH
+) -> str:
+    settings = settings or (
+        load_llm_settings()
+        if Path(db_path) == Path(DEFAULT_DB_PATH)
+        else load_llm_settings(db_path=db_path)
+    )
     if not settings.enabled or settings.provider == "local":
         return "当前为仅本地解析，不会上传文本、图片或 PDF。"
     if settings.provider in {"custom", "anthropic"} and not settings.base_url:
@@ -215,8 +300,16 @@ def provider_status(settings: LLMSettings | None = None) -> str:
     )
 
 
-def is_llm_feature_enabled(feature: str, settings: LLMSettings | None = None) -> bool:
-    settings = settings or load_llm_settings()
+def is_llm_feature_enabled(
+    feature: str,
+    settings: LLMSettings | None = None,
+    db_path: str | Path = DEFAULT_DB_PATH,
+) -> bool:
+    settings = settings or (
+        load_llm_settings()
+        if Path(db_path) == Path(DEFAULT_DB_PATH)
+        else load_llm_settings(db_path=db_path)
+    )
     return settings.is_cloud_enabled and feature in settings.enabled_features
 
 

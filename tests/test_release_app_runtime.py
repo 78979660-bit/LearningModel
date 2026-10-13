@@ -171,8 +171,6 @@ class ReleaseAppRuntimeTests(unittest.TestCase):
         design.install_chinese_dialogs = Mock()
         performance = ModuleType("study_app.ui.performance_log")
         performance.install_performance_log = Mock()
-        cleanup = ModuleType("study_app.integrations.chatgpt_desktop_bridge")
-        cleanup.cleanup_generated_pdfs = Mock()
         guard = SimpleNamespace(acquire=Mock(return_value=True), release=Mock())
         wake_server = SimpleNamespace(start=Mock(return_value=False), stop=Mock())
         window = SimpleNamespace(request_restore=Mock(), show=Mock())
@@ -187,7 +185,6 @@ class ReleaseAppRuntimeTests(unittest.TestCase):
                     "PySide6.QtWidgets": widgets,
                     "study_app.ui.design_components": design,
                     "study_app.ui.performance_log": performance,
-                    "study_app.integrations.chatgpt_desktop_bridge": cleanup,
                 },
             ),
             patch.object(app_runtime, "SingleInstanceGuard", return_value=guard),

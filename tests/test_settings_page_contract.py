@@ -196,6 +196,36 @@ class SettingsPageContractTests(unittest.TestCase):
         warning.assert_called_once()
         save_settings.assert_not_called()
 
+    def test_identity_change_clears_prepopulated_widget_credential(self) -> None:
+        from dataclasses import replace
+        from PySide6.QtWidgets import QComboBox, QLineEdit, QMessageBox, QPushButton
+        from study_app.ui import settings_page
+
+        for original_provider in ("deepseek", "custom"):
+            with self.subTest(provider=original_provider):
+                initial = replace(
+                    self.llm_settings(), provider=original_provider,
+                    custom_base_url="https://endpoint-a.example.test/v1" if original_provider == "custom" else "",
+                )
+                with (
+                    patch.object(settings_page, "load_llm_settings", return_value=initial),
+                    patch.object(settings_page, "list_llm_call_audits", return_value=[]),
+                    patch.object(settings_page, "save_llm_settings") as save,
+                    patch.object(QMessageBox, "information"),
+                ):
+                    page = settings_page.settings_page()
+                    content = page.widget()
+                    provider = next(item for item in content.findChildren(QComboBox) if item.findData("custom") >= 0)
+                    key = next(item for item in content.findChildren(QLineEdit) if item.echoMode() == QLineEdit.EchoMode.Password)
+                    endpoint = next(item for item in content.findChildren(QLineEdit) if item.placeholderText() == "例如 https://api.lmuai.com")
+                    self.assertEqual(key.text(), initial.api_key)
+                    provider.setCurrentIndex(provider.findData("custom"))
+                    endpoint.setText("https://endpoint-b.example.test/v1")
+                    self.assertEqual(key.text(), "")
+                    next(item for item in content.findChildren(QPushButton) if item.text() == "保存 LLM 设置").click()
+                    self.assertEqual(save.call_args.args[0].api_key, "")
+                    page.close()
+
     def test_llm_audit_success_and_failure_rows_preserve_safe_summary(self) -> None:
         from PySide6.QtWidgets import QLabel
         from study_app.ui import settings_page

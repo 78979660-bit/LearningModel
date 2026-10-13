@@ -1,8 +1,9 @@
 """Collect license texts from the exact distributions used by a release build.
 
 The output is evidence for release review, not a legal conclusion. In
-particular, collecting PyMuPDF's license does not resolve the project's public
-redistribution blocker.
+particular, collecting PyMuPDF's license does not verify a candidate's
+corresponding source or redistribution materials. See docs/OPEN_SOURCE.md for
+the project's license decision.
 """
 
 from __future__ import annotations
@@ -218,10 +219,11 @@ def main(argv: list[str] | None = None) -> int:
         "release_blockers": [
             {
                 "component": "PyMuPDF",
-                "status": "unresolved",
+                "status": "candidate-review-required",
                 "reason": (
-                    "Public redistribution requires a documented AGPL compliance "
-                    "decision or an applicable Artifex commercial license."
+                    "The project chose AGPL-3.0-only; public redistribution of a new "
+                    "candidate still requires matching corresponding source and "
+                    "redistribution materials. See docs/OPEN_SOURCE.md."
                 ),
             }
         ],
@@ -232,7 +234,7 @@ def main(argv: list[str] | None = None) -> int:
         encoding="utf-8",
     )
     print(f"Collected {len(records)} distributions into {output_root}")
-    print("PUBLIC RELEASE BLOCKED: PyMuPDF licensing decision is unresolved.")
+    print("NOTICE COLLECTION ONLY: review this candidate's corresponding source and redistribution materials.")
     return 0
 
 

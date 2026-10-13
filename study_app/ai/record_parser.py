@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 import math
@@ -12,6 +13,7 @@ from study_app.ai.audit import (
     mark_audit_validation_failed,
 )
 from study_app.ai.validation import LLMValidationError, validate_record_parser_output
+from study_app.data.db_runtime import DEFAULT_DB_PATH
 
 
 ERROR_CATEGORIES = {
@@ -104,10 +106,16 @@ def difficulty_label(score: float) -> str:
     return "easy"
 
 
-def parse_record_payload_with_llm(payload: dict[str, Any]) -> list[dict[str, Any]]:
-    settings = load_llm_settings()
+def parse_record_payload_with_llm(
+    payload: dict[str, Any], db_path: str | Path = DEFAULT_DB_PATH
+) -> list[dict[str, Any]]:
+    isolated_db = Path(db_path) != Path(DEFAULT_DB_PATH)
+    settings = load_llm_settings(db_path=db_path) if isolated_db else load_llm_settings()
     features = frozenset(settings.enabled_features)
-    result = parse_record_with_llm(payload, settings=settings)
+    result = (
+        parse_record_with_llm(payload, settings=settings, db_path=db_path)
+        if isolated_db else parse_record_with_llm(payload, settings=settings)
+    )
     try:
         selected = result
         if isinstance(result, dict) and isinstance(result.get("problems"), list):
@@ -132,8 +140,15 @@ def parse_record_payload_with_llm(payload: dict[str, Any]) -> list[dict[str, Any
             if isinstance(problem, dict)
         ]
     except Exception as error:
-        mark_audit_validation_failed(result, error)
+        if isolated_db:
+            mark_audit_validation_failed(result, error, db_path=db_path)
+        else:
+            mark_audit_validation_failed(result, error)
         raise
-    mark_audit_validated(result)
-    mark_audit_adopted(result)
+    if isolated_db:
+        mark_audit_validated(result, db_path=db_path)
+        mark_audit_adopted(result, db_path=db_path)
+    else:
+        mark_audit_validated(result)
+        mark_audit_adopted(result)
     return problems

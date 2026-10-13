@@ -21,6 +21,10 @@ from study_app.core.study_plan_items import infer_subject_topic_from_plan_line
 LOGGER = logging.getLogger(__name__)
 
 
+def _database_kwargs(db_path) -> dict[str, object]:
+    return {"db_path": db_path} if db_path is not None else {}
+
+
 def _short_seed_text(value: object, limit: int = 120) -> str:
     text = " ".join(str(value or "").split())
     if len(text) <= limit:
@@ -28,7 +32,7 @@ def _short_seed_text(value: object, limit: int = 120) -> str:
     return text[: limit - 1] + "…"
 
 
-def mock_exam_seed_context(subject: str, mode: str) -> str:
+def mock_exam_seed_context(subject: str, mode: str, *, db_path=None) -> str:
     """Build a compact seed block for full-paper generation.
 
     Daily practice prompts already use same-template seeds. Mock papers need a
@@ -92,6 +96,7 @@ def mock_exam_seed_context(subject: str, mode: str) -> str:
                 difficulty=difficulty,
                 limit=per_template_limit * (6 if group_name in group_keywords else 1),
                 prefer_real_sources=True,
+                **_database_kwargs(db_path),
             )
             for problem in problems:
                 title = str(problem.get("title") or "")
@@ -150,9 +155,16 @@ def practice_distribution_guidance(homework: str, exercise_count: int) -> str:
     return "\n".join(lines)
 
 
-def build_mock_exam_generation_prompt(state: DashboardState, subject: str, mode: str = "diagnostic") -> str:
+def build_mock_exam_generation_prompt(
+    state: DashboardState,
+    subject: str,
+    mode: str = "diagnostic",
+    *,
+    db_path=None,
+    model_path=None,
+) -> str:
     from study_app.core.mock_exam import mock_exam_readiness
-    from study_app.core.study_phase import exam_scope_label, get_subject_phase, is_final_review, weighted_topic_priority_states
+    from study_app.core.study_phase import exam_scope_label, is_final_review, weighted_topic_priority_states
     from study_app.data.text_integrity import validate_text_integrity
 
     if not subject:
@@ -200,14 +212,31 @@ def build_mock_exam_generation_prompt(state: DashboardState, subject: str, mode:
         }
         mode_policy["count"] = physics_counts[mode]
 
-    phase = get_subject_phase(subject)
-    scope_label = exam_scope_label(subject)
-    readiness = mock_exam_readiness(state, subject)
+    scope_label = exam_scope_label(subject, db_path=db_path) if db_path is not None else exam_scope_label(subject)
+    readiness = mock_exam_readiness(
+        state,
+        subject,
+        **({"db_path": str(db_path)} if db_path is not None else {}),
+        **({"model_path": str(model_path)} if model_path is not None else {}),
+    )
     blueprint = readiness.get("blueprint") or []
     gaps = readiness.get("gaps") or []
+    in_final_review = (
+        is_final_review(subject, db_path=db_path)
+        if db_path is not None
+        else is_final_review(subject)
+    )
     weak_items = (
-        weighted_topic_priority_states(subject, limit=10, as_of_date=state.today)
-        if is_final_review(subject)
+        weighted_topic_priority_states(
+            subject,
+            limit=10,
+            as_of_date=state.today,
+            model=getattr(state, "model_data", None),
+            records=list(getattr(state, "raw_records", ()) or ()),
+            **({"db_path": db_path} if db_path is not None else {}),
+            **({"model_path": model_path} if model_path is not None else {}),
+        )
+        if in_final_review
         else []
     )
     weak_lines = []
@@ -220,9 +249,9 @@ def build_mock_exam_generation_prompt(state: DashboardState, subject: str, mode:
         weak_lines.append(f"- {module} / {topic}：掌握度约 {mastery}%，回忆概率约 {recall}%，优先级 {priority}")
 
     scope_block = f"考试范围：{scope_label}\n" if scope_label else "考试范围：按当前学科已学范围与期末复习设置。\n"
-    if not is_final_review(subject):
+    if not in_final_review:
         scope_block += "注意：该学科尚未启用期末复习模式，请生成诊断型模拟卷，题量可略少，但仍需严格围绕已学内容。\n"
-    seed_context = mock_exam_seed_context(subject, mode)
+    seed_context = mock_exam_seed_context(subject, mode, db_path=db_path)
 
     extra_rules: list[str] = []
     if subject == "高等数学":
@@ -322,6 +351,13 @@ def build_practice_generation_prompt(
     line: str,
     state: DashboardState,
     selected_subject: str | None = None,
+    *,
+    db_path=None,
+    template_id_override: str | None = None,
+    template_brief_override: str | None = None,
+    topic_override: str | None = None,
+    target_difficulty_override: int | float | None = None,
+    question_count_override: int | None = None,
 ) -> str:
     import re
 
@@ -334,21 +370,48 @@ def build_practice_generation_prompt(
     template_match = re.search(r"题库模板\s*(?:TEMPLATE_ID\s*)?[:：=]?\s*([A-Za-z0-9_-]+)", homework)
     raw_template_id = template_match.group(1) if template_match else ""
     inferred_template_id, inferred_template_brief = infer_practice_template(homework)
-    template_id = raw_template_id if raw_template_id in known_template_ids() else inferred_template_id
-    difficulty = difficulty_match.group(1) if difficulty_match else "60"
-    exercise_count_int = extract_homework_exercise_count(homework, 2)
+    template_id = (
+        str(template_id_override).strip()
+        if template_id_override is not None
+        else raw_template_id if raw_template_id in known_template_ids() else inferred_template_id
+    )
+    if topic_override is not None:
+        topic = str(topic_override).strip() or "综合练习"
+    if target_difficulty_override is not None:
+        if (
+            isinstance(target_difficulty_override, bool)
+            or not isinstance(target_difficulty_override, (int, float))
+            or not 0 <= float(target_difficulty_override) <= 100
+        ):
+            raise ValueError("参考难度必须是 0 到 100 的数值。")
+        difficulty = f"{float(target_difficulty_override):g}"
+    else:
+        difficulty = difficulty_match.group(1) if difficulty_match else "60"
+    if question_count_override is not None:
+        if (
+            isinstance(question_count_override, bool)
+            or not isinstance(question_count_override, int)
+            or not 1 <= question_count_override <= 30
+        ):
+            raise ValueError("题量必须位于 1 到 30。")
+        exercise_count_int = question_count_override
+    else:
+        exercise_count_int = extract_homework_exercise_count(homework, 2)
     exercise_count = str(exercise_count_int)
     homework = normalize_homework_count(homework, exercise_count_int)
     desired_seed_count = desired_practice_seed_count(exercise_count_int)
-    template_brief = extract_template_brief(homework, template_id)
-    if (
-        raw_template_id not in known_template_ids()
-        or not template_brief
-        or template_brief.startswith("，")
-        or template_brief.startswith(",")
-        or "题量" in template_brief
-    ):
-        template_brief = inferred_template_brief
+    if template_brief_override is not None:
+        template_brief = str(template_brief_override).strip() or inferred_template_brief
+    else:
+        template_brief = extract_template_brief(homework, template_id)
+        if (
+            raw_template_id not in known_template_ids()
+            or not template_brief
+            or template_brief.startswith("，")
+            or template_brief.startswith(",")
+            or "题量" in template_brief
+        ):
+            template_brief = inferred_template_brief
     recent_context = recent_practice_context(subject, topic, state)
     seed_context = practice_seed_context(
         template_id,
@@ -357,12 +420,26 @@ def build_practice_generation_prompt(
         subject=subject,
         desired_count=desired_seed_count,
         exercise_count=exercise_count_int,
+        db_path=db_path,
     )
     distribution_context = practice_distribution_guidance(homework, exercise_count_int)
     from study_app.core.study_phase import exam_scope_label, is_final_review, out_of_exam_scope_references
 
-    scope_label = exam_scope_label(subject) if is_final_review(subject) else ""
-    scope_violations = out_of_exam_scope_references(subject, f"{line}\n{topic}")
+    in_final_review = (
+        is_final_review(subject, db_path=db_path)
+        if db_path is not None
+        else is_final_review(subject)
+    )
+    scope_label = (
+        (exam_scope_label(subject, db_path=db_path) if db_path is not None else exam_scope_label(subject))
+        if in_final_review
+        else ""
+    )
+    scope_violations = out_of_exam_scope_references(
+        subject,
+        f"{line}\n{topic}",
+        **({"db_path": db_path} if db_path is not None else {}),
+    )
     if scope_violations:
         raise ValueError(
             f"{subject} 已进入期末复习，当前题目超出考试范围 {scope_label}："
@@ -374,7 +451,7 @@ def build_practice_generation_prompt(
         else ""
     )
     if template_id == "CS-OJ-PRACTICE":
-        return build_oj_practice_list(line, state, selected_subject)
+        return build_oj_practice_list(line, state, selected_subject, db_path=db_path)
     prompt = (
         "[PERSONAL_LEARNING_OS_PDF_WORKFLOW]\n"
         "请根据下列轻量题库模板生成练习题。\n\n"
@@ -430,6 +507,8 @@ def build_oj_practice_list(
     line: str,
     state: DashboardState,
     selected_subject: str | None = None,
+    *,
+    db_path=None,
 ) -> str:
     import re
     from study_app.data.text_integrity import corruption_reason, validate_text_integrity
@@ -460,6 +539,7 @@ def build_oj_practice_list(
             topic=topic_hint,
             difficulty=target_difficulty,
             limit=max(2, min(5, exercise_count)),
+            **_database_kwargs(db_path),
         )
     except Exception:
         LOGGER.exception("OJ practice problems could not be read for %s", topic_hint)
@@ -567,6 +647,8 @@ def practice_seed_context(
     subject: str | None = None,
     desired_count: int = 3,
     exercise_count: int = 2,
+    *,
+    db_path=None,
 ) -> str:
     try:
         from study_app.data.practice_repository import find_practice_problems
@@ -583,6 +665,7 @@ def practice_seed_context(
                 subject=subject,
                 difficulty=target_difficulty,
                 limit=desired_count,
+                **_database_kwargs(db_path),
             )
             seen_ids = {problem["id"] for problem in problems}
             for component in components:
@@ -591,6 +674,7 @@ def practice_seed_context(
                     topic=component,
                     difficulty=target_difficulty,
                     limit=desired_count,
+                    **_database_kwargs(db_path),
                 ):
                     if problem["id"] not in seen_ids:
                         problems.append(problem)
@@ -606,12 +690,15 @@ def practice_seed_context(
                 topic=None if generic_topic else topic,
                 difficulty=target_difficulty,
                 limit=desired_count,
+                **_database_kwargs(db_path),
             )
         if not problems and not generic_topic:
             problems = find_practice_problems(
                 template_id=template_id,
+                subject=subject,
                 difficulty=target_difficulty,
                 limit=desired_count,
+                **_database_kwargs(db_path),
             )
         if problems:
             lines = []
@@ -670,6 +757,7 @@ def practice_seed_context(
                             f"出题提示需要 {desired_count} 个样题种子，"
                             f"实际仅 {len(problems)} 个；本次题量 {exercise_count}。"
                         ),
+                        **({"db_path": db_path} if db_path is not None else {}),
                     )
                 except Exception as error:
                     backlog_error = error
@@ -694,6 +782,7 @@ def practice_seed_context(
                 topic=topic,
                 target_difficulty=target_difficulty,
                 note=f"未找到样题种子；本次题量 {exercise_count}，建议至少 {desired_count} 个种子。",
+                **({"db_path": db_path} if db_path is not None else {}),
             )
         except Exception:
             LOGGER.exception("Failed to register missing practice collection gap")

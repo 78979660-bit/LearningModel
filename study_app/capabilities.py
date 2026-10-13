@@ -62,13 +62,6 @@ def detect_optional_capabilities() -> dict[str, dict[str, object]]:
             runtime_error = str(error)
     selected_executable = runtime.executable if runtime is not None else tesseract
 
-    local_app_data = Path(os.environ.get("LOCALAPPDATA", Path.home()))
-    chatgpt_candidates = (
-        local_app_data / "OpenAI" / "ChatGPT" / "ChatGPT.exe",
-        local_app_data / "Programs" / "ChatGPT" / "ChatGPT.exe",
-    )
-    chatgpt = next((path for path in chatgpt_candidates if path.is_file()), None)
-
     return {
         "ocr": {
             "available": runtime is not None,
@@ -85,10 +78,6 @@ def detect_optional_capabilities() -> dict[str, dict[str, object]]:
                 if tesseract is not None
                 else "未检测到 Tesseract 可执行文件；OCR 功能不可用"
             ),
-        },
-        "chatgpt_desktop": {
-            "available": chatgpt is not None,
-            "detail": str(chatgpt) if chatgpt is not None else "未检测到 ChatGPT 桌面应用；桌面桥接功能不可用",
         },
         "network_services": {
             "available": None,

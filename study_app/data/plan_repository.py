@@ -3,7 +3,9 @@ from __future__ import annotations
 
 import hashlib
 import json
+from contextlib import contextmanager
 from pathlib import Path
+import sqlite3
 from typing import Any
 
 from study_app.data.catalog_guards import require_f5_subject_write_allowed
@@ -18,6 +20,18 @@ from study_app.data.db_runtime import (
 from study_app.paths import DATABASE_PATH
 
 DEFAULT_DB_PATH = DATABASE_PATH
+
+
+@contextmanager
+def _write_connection(db_path, connection):
+    """Borrow a caller's transaction without committing or closing it."""
+    if connection is None:
+        with connect(db_path) as owned_connection:
+            yield owned_connection
+    else:
+        if not connection.in_transaction:
+            raise ValueError("A borrowed connection requires an active transaction")
+        yield connection
 
 
 def study_plan_signature(state: dict[str, Any]) -> str:
@@ -50,6 +64,8 @@ def save_study_day_budget(
     plan_date: object,
     available_minutes: object,
     db_path: Path | str = DEFAULT_DB_PATH,
+    *,
+    connection: sqlite3.Connection | None = None,
 ):
     """Validate both fields before opening a write connection."""
     from study_app.core.day_budget_input import validate_day_budget_input
@@ -57,7 +73,7 @@ def save_study_day_budget(
     budget = validate_day_budget_input(plan_date, available_minutes)
     path = require_initialized_database(db_path)
     _require_study_day_budget_table(path)
-    with connect(path) as connection:
+    with _write_connection(path, connection) as connection:
         connection.execute(
             """
             INSERT INTO study_day_budgets(plan_date, available_minutes)
@@ -118,6 +134,8 @@ def save_subject_exam_date(
     subject_name: str,
     exam_date: object,
     db_path: Path | str = DEFAULT_DB_PATH,
+    *,
+    connection: sqlite3.Connection | None = None,
 ) -> str | None:
     """Only a current activity subject can set or clear its exam date."""
     from study_app.core.active_subjects import require_activity_subject
@@ -127,7 +145,7 @@ def save_subject_exam_date(
     require_activity_subject(state, subject_name, "修改考试日期")
     path = require_initialized_database(db_path)
     _require_subject_exam_dates_table(path)
-    with connect(path) as connection:
+    with _write_connection(path, connection) as connection:
         subject = connection.execute(
             "SELECT id, status FROM subjects WHERE name = ?",
             (subject_name,),
@@ -204,6 +222,8 @@ def save_task_estimate(
     estimated_minutes: object,
     source: object = "user",
     db_path: Path | str = DEFAULT_DB_PATH,
+    *,
+    connection: sqlite3.Connection | None = None,
 ):
     """Validate before writes, and require an explicitly installed estimate table."""
     from study_app.core.active_subjects import require_activity_subject
@@ -213,7 +233,7 @@ def save_task_estimate(
     require_activity_subject(state, candidate.subject_id, "修改任务估时")
     path = require_initialized_database(db_path)
     _require_task_estimates_table(path)
-    with connect(path) as connection:
+    with _write_connection(path, connection) as connection:
         subject = connection.execute(
             "SELECT id, status FROM subjects WHERE name = ?", (candidate.subject_id,)
         ).fetchone()
@@ -302,6 +322,8 @@ def create_budgeted_day_plan(
     available_minutes: object,
     plan: object,
     db_path: Path | str = DEFAULT_DB_PATH,
+    *,
+    connection: sqlite3.Connection | None = None,
 ) -> int:
     """Atomically replace all active plans with one canonical day plan."""
     from study_app.core.day_budget_input import validate_day_budget_input
@@ -343,7 +365,7 @@ def create_budgeted_day_plan(
     validate_text_integrity(rows, context="规范预算计划条目")
     path = require_initialized_database(db_path)
     _require_budget_plan_schema(path)
-    with connect(path) as connection:
+    with _write_connection(path, connection) as connection:
         old_states = {
             row["task_id"]: (row["checked"], row["result"])
             for row in connection.execute(

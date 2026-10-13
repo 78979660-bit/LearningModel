@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import csv
 import hashlib
 import io
 import json
+import locale
 import math
 import re
+import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Iterable
@@ -98,36 +101,55 @@ def _local_tesseract_runtime() -> tuple[Path, Path, str]:
 
 def _default_ocr(png_bytes: bytes) -> OCRPage:
     try:
-        import pytesseract
         from PIL import Image
 
         executable, tessdata, language = _local_tesseract_runtime()
-        pytesseract.pytesseract.tesseract_cmd = str(executable)
-        image = Image.open(io.BytesIO(png_bytes))
-        data = pytesseract.image_to_data(
-            image,
-            lang=language,
-            config=f'--tessdata-dir "{tessdata}"',
-            output_type=pytesseract.Output.DICT,
+        with Image.open(io.BytesIO(png_bytes)) as image:
+            width, height = image.size
+        # Pass paths as arguments, not a config string: pytesseract's Windows
+        # config splitting retains quotes and breaks tessdata paths.
+        completed = subprocess.run(
+            [
+                str(executable), "stdin", "stdout",
+                "--tessdata-dir", str(tessdata), "-l", language,
+                "-c", "tessedit_create_tsv=1",
+            ],
+            input=png_bytes,
+            capture_output=True,
+            check=False,
+            timeout=30,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
         )
+        if completed.returncode:
+            try:
+                detail = completed.stderr.decode("utf-8")
+            except UnicodeDecodeError:
+                detail = completed.stderr.decode(locale.getencoding(), errors="replace")
+            raise RuntimeError(f"Tesseract exited {completed.returncode}: {detail.strip()}")
+        rows = csv.DictReader(
+            io.StringIO(completed.stdout.decode("utf-8-sig")),
+            delimiter="\t", quoting=csv.QUOTE_NONE,
+        )
+        if not {"text", "conf", "left", "top", "width", "height"}.issubset(rows.fieldnames or ()):
+            raise ValueError("无效 OCR TSV 列")
+        data = list(rows)
     except Exception as error:
         raise RuntimeError(f"本地 OCR 不可用：{type(error).__name__}") from error
     blocks: list[OCRBlock] = []
     confidences: list[float] = []
-    width, height = image.size
-    for index, raw_text in enumerate(data.get("text", [])):
-        text = str(raw_text or "").strip()
+    for row in data:
+        text = str(row.get("text") or "").strip()
         if not text:
             continue
         try:
-            confidence = float(data["conf"][index]) / 100
-        except (ValueError, TypeError, KeyError, IndexError):
+            confidence = float(row["conf"]) / 100
+        except (ValueError, TypeError, KeyError):
             confidence = 0.0
         confidences.append(max(0.0, min(1.0, confidence)))
-        left = float(data["left"][index])
-        top = float(data["top"][index])
-        right = left + float(data["width"][index])
-        bottom = top + float(data["height"][index])
+        left = float(row["left"])
+        top = float(row["top"])
+        right = left + float(row["width"])
+        bottom = top + float(row["height"])
         blocks.append(OCRBlock(text, (left / width, top / height, right / width, bottom / height)))
     return OCRPage(
         text="\n".join(block.text for block in blocks),

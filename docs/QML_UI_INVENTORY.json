@@ -1,0 +1,2232 @@
+{
+  "baseline": "Widgets source unchanged from f8a4d4a",
+  "source_files": 22,
+  "limits": "AST source-level call sites; reachability and service object methods require the manual migration audit.",
+  "totals": {
+    "page_factories": 14,
+    "qt_classes": 20,
+    "dialogs_and_menus": 54,
+    "worker_and_submit_sites": 22,
+    "direct_service_calls": 195
+  },
+  "files": [
+    {
+      "file": "study_app/ui/__init__.py",
+      "page_factories": [],
+      "qt_classes": [],
+      "dialogs_and_menus": [],
+      "worker_and_submit_sites": [],
+      "direct_service_calls": []
+    },
+    {
+      "file": "study_app/ui/activity_view.py",
+      "page_factories": [],
+      "qt_classes": [],
+      "dialogs_and_menus": [],
+      "worker_and_submit_sites": [],
+      "direct_service_calls": [
+        {
+          "line": 39,
+          "owner": "filter_homepage_activity",
+          "call": "activity_subject_names",
+          "service": "study_app.core.active_subjects.dashboard_activity_subject_names"
+        },
+        {
+          "line": 60,
+          "owner": "record_subject_names",
+          "call": "activity_subject_names",
+          "service": "study_app.core.active_subjects.dashboard_activity_subject_names"
+        },
+        {
+          "line": 64,
+          "owner": "final_review_subject_names",
+          "call": "activity_subject_names",
+          "service": "study_app.core.active_subjects.dashboard_activity_subject_names"
+        },
+        {
+          "line": 68,
+          "owner": "plan_subject_scope_options",
+          "call": "activity_subject_names",
+          "service": "study_app.core.active_subjects.dashboard_activity_subject_names"
+        }
+      ]
+    },
+    {
+      "file": "study_app/ui/alert_page.py",
+      "page_factories": [
+        {
+          "line": 153,
+          "owner": "",
+          "call": "alert_page"
+        }
+      ],
+      "qt_classes": [],
+      "dialogs_and_menus": [],
+      "worker_and_submit_sites": [],
+      "direct_service_calls": [
+        {
+          "line": 52,
+          "owner": "load_alert_page_entries",
+          "call": "list_knowledge_alerts",
+          "service": "study_app.data.database.list_knowledge_alerts"
+        },
+        {
+          "line": 55,
+          "owner": "load_alert_page_entries",
+          "call": "list_knowledge_alert_events",
+          "service": "study_app.data.database.list_knowledge_alert_events"
+        },
+        {
+          "line": 79,
+          "owner": "load_alert_page_entries",
+          "call": "explain_knowledge_topic",
+          "service": "study_app.core.knowledge_explanations.explain_knowledge_topic"
+        },
+        {
+          "line": 94,
+          "owner": "_handle_alert_action",
+          "call": "connect",
+          "service": "study_app.data.database.connect"
+        },
+        {
+          "line": 95,
+          "owner": "_handle_alert_action",
+          "call": "handle_alert",
+          "service": "study_app.core.knowledge_alerts.handle_alert"
+        },
+        {
+          "line": 108,
+          "owner": "_snooze_alert_action",
+          "call": "connect",
+          "service": "study_app.data.database.connect"
+        },
+        {
+          "line": 109,
+          "owner": "_snooze_alert_action",
+          "call": "snooze_alert",
+          "service": "study_app.core.knowledge_alerts.snooze_alert"
+        }
+      ]
+    },
+    {
+      "file": "study_app/ui/app_runtime.py",
+      "page_factories": [
+        {
+          "line": 127,
+          "owner": "",
+          "call": "run_app"
+        }
+      ],
+      "qt_classes": [],
+      "dialogs_and_menus": [],
+      "worker_and_submit_sites": [
+        {
+          "line": 96,
+          "owner": "",
+          "call": "WeeklyCollectionWorker",
+          "kind": "worker class",
+          "bases": [
+            "threading.Thread"
+          ]
+        }
+      ],
+      "direct_service_calls": [
+        {
+          "line": 39,
+          "owner": "_initialize_user_data",
+          "call": "ensure_seeded_database",
+          "service": "study_app.data.database.ensure_seeded_database"
+        },
+        {
+          "line": 40,
+          "owner": "_initialize_user_data",
+          "call": "ensure_practice_bank_seeded",
+          "service": "study_app.data.practice_repository.ensure_practice_bank_seeded"
+        },
+        {
+          "line": 43,
+          "owner": "_initialize_user_data",
+          "call": "load_llm_settings",
+          "service": "study_app.ai.providers.load_llm_settings"
+        },
+        {
+          "line": 73,
+          "owner": "_weekly_collection_is_enabled",
+          "call": "get_setting",
+          "service": "study_app.data.database.get_setting"
+        },
+        {
+          "line": 114,
+          "owner": "WeeklyCollectionWorker.run",
+          "call": "collection_is_due",
+          "service": "study_app.data.weekly_practice_collector.collection_is_due"
+        },
+        {
+          "line": 115,
+          "owner": "WeeklyCollectionWorker.run",
+          "call": "collect_weekly_sources",
+          "service": "study_app.data.weekly_practice_collector.collect_weekly_sources"
+        },
+        {
+          "line": 162,
+          "owner": "run_app",
+          "call": "cleanup_generated_pdfs",
+          "service": "study_app.integrations.chatgpt_desktop_bridge.cleanup_generated_pdfs"
+        },
+        {
+          "line": 165,
+          "owner": "run_app",
+          "call": "load_dashboard_state",
+          "service": "study_app.core.dashboard.load_dashboard_state"
+        }
+      ]
+    },
+    {
+      "file": "study_app/ui/chapter_graph_view.py",
+      "page_factories": [],
+      "qt_classes": [
+        {
+          "line": 204,
+          "owner": "",
+          "call": "ChapterGraphCanvas",
+          "bases": [
+            "QWidget"
+          ]
+        },
+        {
+          "line": 803,
+          "owner": "",
+          "call": "ChapterDetailPanel",
+          "bases": [
+            "QTextEdit"
+          ]
+        },
+        {
+          "line": 991,
+          "owner": "chapter_graph_panel",
+          "call": "GraphPanelScrollArea",
+          "bases": [
+            "QScrollArea"
+          ]
+        }
+      ],
+      "dialogs_and_menus": [
+        {
+          "line": 1088,
+          "owner": "chapter_graph_panel",
+          "call": "QDialog",
+          "literal_arguments": []
+        }
+      ],
+      "worker_and_submit_sites": [
+        {
+          "line": 951,
+          "owner": "chapter_graph_panel",
+          "call": "AsyncTaskService",
+          "kind": "task call"
+        },
+        {
+          "line": 1283,
+          "owner": "chapter_graph_panel.load_graph",
+          "call": "service.submit",
+          "kind": "task call"
+        }
+      ],
+      "direct_service_calls": [
+        {
+          "line": 951,
+          "owner": "chapter_graph_panel",
+          "call": "AsyncTaskService",
+          "service": "study_app.core.async_tasks.AsyncTaskService"
+        }
+      ]
+    },
+    {
+      "file": "study_app/ui/daily_summary_support.py",
+      "page_factories": [],
+      "qt_classes": [],
+      "dialogs_and_menus": [],
+      "worker_and_submit_sites": [],
+      "direct_service_calls": [
+        {
+          "line": 26,
+          "owner": "matching_daily_summary_cache",
+          "call": "validate_cached_daily_summary",
+          "service": "study_app.ai.daily_summary.validate_cached_daily_summary"
+        }
+      ]
+    },
+    {
+      "file": "study_app/ui/dashboard_widgets.py",
+      "page_factories": [
+        {
+          "line": 265,
+          "owner": "",
+          "call": "simple_page"
+        }
+      ],
+      "qt_classes": [
+        {
+          "line": 147,
+          "owner": "daily_summary_card",
+          "call": "DailySummaryCard",
+          "bases": [
+            "QWidget"
+          ]
+        }
+      ],
+      "dialogs_and_menus": [],
+      "worker_and_submit_sites": [
+        {
+          "line": 134,
+          "owner": "daily_summary_card",
+          "call": "AsyncTaskService",
+          "kind": "task call"
+        },
+        {
+          "line": 248,
+          "owner": "daily_summary_card.generate_llm_summary",
+          "call": "service.submit",
+          "kind": "task call"
+        }
+      ],
+      "direct_service_calls": [
+        {
+          "line": 119,
+          "owner": "daily_summary_card",
+          "call": "local_daily_summary",
+          "service": "study_app.ai.daily_summary.local_daily_summary"
+        },
+        {
+          "line": 123,
+          "owner": "daily_summary_card",
+          "call": "get_setting",
+          "service": "study_app.data.database.get_setting"
+        },
+        {
+          "line": 134,
+          "owner": "daily_summary_card",
+          "call": "AsyncTaskService",
+          "service": "study_app.core.async_tasks.AsyncTaskService"
+        },
+        {
+          "line": 239,
+          "owner": "daily_summary_card.generate_llm_summary",
+          "call": "is_llm_feature_enabled",
+          "service": "study_app.ai.providers.is_llm_feature_enabled"
+        },
+        {
+          "line": 250,
+          "owner": "daily_summary_card.generate_llm_summary",
+          "call": "generate_daily_summary_with_llm",
+          "service": "study_app.ai.daily_summary.generate_daily_summary_with_llm"
+        }
+      ]
+    },
+    {
+      "file": "study_app/ui/design_components.py",
+      "page_factories": [
+        {
+          "line": 31,
+          "owner": "",
+          "call": "readable_page"
+        }
+      ],
+      "qt_classes": [
+        {
+          "line": 6,
+          "owner": "disclosure",
+          "call": "Disclosure",
+          "bases": [
+            "QWidget"
+          ]
+        },
+        {
+          "line": 43,
+          "owner": "install_chinese_dialogs",
+          "call": "DialogTranslator",
+          "bases": [
+            "QTranslator"
+          ]
+        }
+      ],
+      "dialogs_and_menus": [],
+      "worker_and_submit_sites": [],
+      "direct_service_calls": [
+        {
+          "line": 86,
+          "owner": "today_plan_card.refresh",
+          "call": "get_budgeted_day_plan",
+          "service": "study_app.data.database.get_budgeted_day_plan"
+        },
+        {
+          "line": 109,
+          "owner": "today_plan_card.refresh",
+          "call": "get_active_study_plan",
+          "service": "study_app.data.database.get_active_study_plan"
+        },
+        {
+          "line": 135,
+          "owner": "current_plan_answer",
+          "call": "get_budgeted_day_plan",
+          "service": "study_app.data.database.get_budgeted_day_plan"
+        }
+      ]
+    },
+    {
+      "file": "study_app/ui/knowledge_page.py",
+      "page_factories": [
+        {
+          "line": 51,
+          "owner": "",
+          "call": "knowledge_page"
+        }
+      ],
+      "qt_classes": [
+        {
+          "line": 62,
+          "owner": "knowledge_page",
+          "call": "KnowledgeGraphPage",
+          "bases": [
+            "QWidget"
+          ]
+        }
+      ],
+      "dialogs_and_menus": [],
+      "worker_and_submit_sites": [],
+      "direct_service_calls": [
+        {
+          "line": 28,
+          "owner": "load_knowledge_page_entries",
+          "call": "list_topic_identities",
+          "service": "study_app.data.database.list_topic_identities"
+        },
+        {
+          "line": 29,
+          "owner": "load_knowledge_page_entries",
+          "call": "list_prerequisite_edges",
+          "service": "study_app.data.database.list_prerequisite_edges"
+        },
+        {
+          "line": 32,
+          "owner": "load_knowledge_page_entries",
+          "call": "DashboardComputationContext",
+          "service": "study_app.core.computation_context.DashboardComputationContext"
+        },
+        {
+          "line": 35,
+          "owner": "load_knowledge_page_entries",
+          "call": "build_topic_insights",
+          "service": "study_app.core.topic_insights.build_topic_insights"
+        },
+        {
+          "line": 43,
+          "owner": "load_knowledge_page_entries",
+          "call": "classify_topics",
+          "service": "study_app.core.knowledge_states.classify_topics"
+        },
+        {
+          "line": 46,
+          "owner": "load_knowledge_page_entries",
+          "call": "explain_knowledge_topic",
+          "service": "study_app.core.knowledge_explanations.explain_knowledge_topic"
+        }
+      ]
+    },
+    {
+      "file": "study_app/ui/main_window.py",
+      "page_factories": [],
+      "qt_classes": [],
+      "dialogs_and_menus": [],
+      "worker_and_submit_sites": [],
+      "direct_service_calls": []
+    },
+    {
+      "file": "study_app/ui/oj_page.py",
+      "page_factories": [
+        {
+          "line": 91,
+          "owner": "",
+          "call": "oj_page"
+        }
+      ],
+      "qt_classes": [],
+      "dialogs_and_menus": [],
+      "worker_and_submit_sites": [],
+      "direct_service_calls": [
+        {
+          "line": 48,
+          "owner": "load_oj_page_entries",
+          "call": "list_oj_problem_topics",
+          "service": "study_app.data.database.list_oj_problem_topics"
+        },
+        {
+          "line": 49,
+          "owner": "load_oj_page_entries",
+          "call": "build_oj_history",
+          "service": "study_app.core.oj_history.build_oj_history"
+        },
+        {
+          "line": 49,
+          "owner": "load_oj_page_entries",
+          "call": "list_oj_attempts",
+          "service": "study_app.data.database.list_oj_attempts"
+        },
+        {
+          "line": 51,
+          "owner": "load_oj_page_entries",
+          "call": "list_oj_problems",
+          "service": "study_app.data.database.list_oj_problems"
+        },
+        {
+          "line": 117,
+          "owner": "oj_page",
+          "call": "list_topic_identities",
+          "service": "study_app.data.database.list_topic_identities"
+        },
+        {
+          "line": 414,
+          "owner": "oj_page.save_problem_action",
+          "call": "normalize_topic_keys",
+          "service": "study_app.core.oj_topics.normalize_topic_keys"
+        }
+      ]
+    },
+    {
+      "file": "study_app/ui/performance_log.py",
+      "page_factories": [],
+      "qt_classes": [],
+      "dialogs_and_menus": [],
+      "worker_and_submit_sites": [],
+      "direct_service_calls": []
+    },
+    {
+      "file": "study_app/ui/query_page.py",
+      "page_factories": [
+        {
+          "line": 40,
+          "owner": "",
+          "call": "query_page"
+        }
+      ],
+      "qt_classes": [
+        {
+          "line": 93,
+          "owner": "query_page",
+          "call": "QueryScrollArea",
+          "bases": [
+            "QScrollArea"
+          ]
+        }
+      ],
+      "dialogs_and_menus": [
+        {
+          "line": 194,
+          "owner": "query_page.choose_attachments",
+          "call": "QFileDialog.getOpenFileNames",
+          "literal_arguments": [
+            "选择学习材料",
+            ""
+          ]
+        },
+        {
+          "line": 376,
+          "owner": "query_page.make_auto_toggle.toggle",
+          "call": "QMessageBox.warning",
+          "literal_arguments": [
+            "保存失败"
+          ]
+        },
+        {
+          "line": 378,
+          "owner": "query_page.make_auto_toggle.toggle",
+          "call": "QMessageBox.information",
+          "literal_arguments": [
+            "已保存",
+            "学习助理自动执行策略已保存。"
+          ]
+        },
+        {
+          "line": 778,
+          "owner": "query_page.dispatch_undo_check",
+          "call": "QMessageBox.question",
+          "literal_arguments": [
+            "撤销确认",
+            "撤销将重放掌握度与预警且保留审计。确定要撤销上一步吗？"
+          ]
+        }
+      ],
+      "worker_and_submit_sites": [
+        {
+          "line": 61,
+          "owner": "query_page",
+          "call": "AsyncTaskService",
+          "kind": "task call"
+        },
+        {
+          "line": 568,
+          "owner": "query_page.start_intent",
+          "call": "service.submit",
+          "kind": "task call"
+        },
+        {
+          "line": 626,
+          "owner": "query_page.start_execution",
+          "call": "service.submit",
+          "kind": "task call"
+        },
+        {
+          "line": 705,
+          "owner": "query_page.cancel_proposal",
+          "call": "service.submit",
+          "kind": "task call"
+        },
+        {
+          "line": 737,
+          "owner": "query_page.request_retry",
+          "call": "service.submit",
+          "kind": "task call"
+        },
+        {
+          "line": 753,
+          "owner": "query_page.request_undo",
+          "call": "service.submit",
+          "kind": "task call"
+        },
+        {
+          "line": 792,
+          "owner": "query_page.dispatch_undo_check",
+          "call": "service.submit",
+          "kind": "task call"
+        },
+        {
+          "line": 884,
+          "owner": "query_page.run_query",
+          "call": "service.submit",
+          "kind": "task call"
+        }
+      ],
+      "direct_service_calls": [
+        {
+          "line": 61,
+          "owner": "query_page",
+          "call": "AsyncTaskService",
+          "service": "study_app.core.async_tasks.AsyncTaskService"
+        },
+        {
+          "line": 73,
+          "owner": "query_page.make_engine",
+          "call": "LearningAssistantEngine",
+          "service": "study_app.core.learning_assistant_engine.LearningAssistantEngine"
+        },
+        {
+          "line": 74,
+          "owner": "query_page.make_engine",
+          "call": "LearningAssistantEngine",
+          "service": "study_app.core.learning_assistant_engine.LearningAssistantEngine"
+        },
+        {
+          "line": 136,
+          "owner": "query_page.refresh_status_strip",
+          "call": "providers.load_llm_settings",
+          "service": "study_app.ai.providers.load_llm_settings"
+        },
+        {
+          "line": 137,
+          "owner": "query_page.refresh_status_strip",
+          "call": "providers.provider_status",
+          "service": "study_app.ai.providers.provider_status"
+        },
+        {
+          "line": 146,
+          "owner": "query_page.refresh_status_strip",
+          "call": "load_privacy_settings",
+          "service": "study_app.core.learning_assistant_policy.load_privacy_settings"
+        },
+        {
+          "line": 148,
+          "owner": "query_page.refresh_status_strip",
+          "call": "load_privacy_settings",
+          "service": "study_app.core.learning_assistant_policy.load_privacy_settings"
+        },
+        {
+          "line": 323,
+          "owner": "query_page.refresh_alert_summary",
+          "call": "list_knowledge_alerts",
+          "service": "study_app.data.database.list_knowledge_alerts"
+        },
+        {
+          "line": 325,
+          "owner": "query_page.refresh_alert_summary",
+          "call": "list_knowledge_alerts",
+          "service": "study_app.data.database.list_knowledge_alerts"
+        },
+        {
+          "line": 349,
+          "owner": "query_page.load_auto_policy",
+          "call": "load_auto_exec_policy",
+          "service": "study_app.core.learning_assistant_policy.load_auto_exec_policy"
+        },
+        {
+          "line": 351,
+          "owner": "query_page.load_auto_policy",
+          "call": "load_auto_exec_policy",
+          "service": "study_app.core.learning_assistant_policy.load_auto_exec_policy"
+        },
+        {
+          "line": 366,
+          "owner": "query_page.make_auto_toggle.toggle",
+          "call": "load_auto_exec_policy",
+          "service": "study_app.core.learning_assistant_policy.load_auto_exec_policy"
+        },
+        {
+          "line": 368,
+          "owner": "query_page.make_auto_toggle.toggle",
+          "call": "load_auto_exec_policy",
+          "service": "study_app.core.learning_assistant_policy.load_auto_exec_policy"
+        },
+        {
+          "line": 372,
+          "owner": "query_page.make_auto_toggle.toggle",
+          "call": "save_auto_exec_policy",
+          "service": "study_app.core.learning_assistant_policy.save_auto_exec_policy"
+        },
+        {
+          "line": 374,
+          "owner": "query_page.make_auto_toggle.toggle",
+          "call": "save_auto_exec_policy",
+          "service": "study_app.core.learning_assistant_policy.save_auto_exec_policy"
+        },
+        {
+          "line": 384,
+          "owner": "query_page",
+          "call": "ACTION_LABELS.get",
+          "service": "study_app.core.learning_assistant_schema.ACTION_LABELS.get"
+        },
+        {
+          "line": 438,
+          "owner": "query_page.build_proposal_summary",
+          "call": "ACTION_LABELS.get",
+          "service": "study_app.core.learning_assistant_schema.ACTION_LABELS.get"
+        },
+        {
+          "line": 563,
+          "owner": "query_page.start_intent.worker",
+          "call": "can_auto_execute",
+          "service": "study_app.core.learning_assistant_policy.can_auto_execute"
+        },
+        {
+          "line": 868,
+          "owner": "query_page.run_query",
+          "call": "natural_query.answer_query_locally",
+          "service": "study_app.ai.natural_query.answer_query_locally"
+        },
+        {
+          "line": 882,
+          "owner": "query_page.run_query",
+          "call": "providers.is_llm_feature_enabled",
+          "service": "study_app.ai.providers.is_llm_feature_enabled"
+        },
+        {
+          "line": 886,
+          "owner": "query_page.run_query",
+          "call": "natural_query.answer_query_with_llm",
+          "service": "study_app.ai.natural_query.answer_query_with_llm"
+        }
+      ]
+    },
+    {
+      "file": "study_app/ui/record_editor.py",
+      "page_factories": [
+        {
+          "line": 960,
+          "owner": "",
+          "call": "add_record_page"
+        }
+      ],
+      "qt_classes": [
+        {
+          "line": 72,
+          "owner": "_RecordEditorType.build",
+          "call": "NoWheelComboBox",
+          "bases": [
+            "QComboBox"
+          ]
+        },
+        {
+          "line": 76,
+          "owner": "_RecordEditorType.build",
+          "call": "_RecordEditorWidget",
+          "bases": [
+            "QWidget"
+          ]
+        }
+      ],
+      "dialogs_and_menus": [
+        {
+          "line": 311,
+          "owner": "_RecordEditorType.build._RecordEditorWidget.add_files",
+          "call": "QFileDialog.getOpenFileNames",
+          "literal_arguments": [
+            "选择学习材料或题目文件",
+            "",
+            "学习材料 (*.pdf *.pptx *.ppt *.docx *.xlsx *.png *.jpg *.jpeg *.webp);;所有文件 (*.*)"
+          ]
+        },
+        {
+          "line": 325,
+          "owner": "_RecordEditorType.build._RecordEditorWidget.search_files_by_hint",
+          "call": "QMessageBox.information",
+          "literal_arguments": [
+            "请输入描述",
+            "例如：坚果云 chap6，或 桌面 微积分2。"
+          ]
+        },
+        {
+          "line": 476,
+          "owner": "_RecordEditorType.build._RecordEditorWidget._poll_recognition_result",
+          "call": "QMessageBox.critical",
+          "literal_arguments": []
+        },
+        {
+          "line": 478,
+          "owner": "_RecordEditorType.build._RecordEditorWidget._poll_recognition_result",
+          "call": "QMessageBox.warning",
+          "literal_arguments": []
+        },
+        {
+          "line": 902,
+          "owner": "_RecordEditorType.build._RecordEditorWidget.save_record",
+          "call": "QMessageBox.information",
+          "literal_arguments": [
+            "正在识别题目",
+            "请等待当前识别完成后再保存，避免保存未确认的题目结果。"
+          ]
+        },
+        {
+          "line": 911,
+          "owner": "_RecordEditorType.build._RecordEditorWidget.save_record",
+          "call": "QMessageBox.information",
+          "literal_arguments": [
+            "正在识别题目",
+            "请等待当前识别完成后再保存，避免保存未确认的题目结果。"
+          ]
+        },
+        {
+          "line": 919,
+          "owner": "_RecordEditorType.build._RecordEditorWidget.save_record",
+          "call": "QMessageBox.warning",
+          "literal_arguments": [
+            "缺少学科",
+            "请填写或选择学科。"
+          ]
+        },
+        {
+          "line": 922,
+          "owner": "_RecordEditorType.build._RecordEditorWidget.save_record",
+          "call": "QMessageBox.warning",
+          "literal_arguments": [
+            "缺少内容",
+            "请至少填写主题、备注或题目。"
+          ]
+        },
+        {
+          "line": 931,
+          "owner": "_RecordEditorType.build._RecordEditorWidget.save_record",
+          "call": "QMessageBox.warning",
+          "literal_arguments": [
+            "格式错误"
+          ]
+        },
+        {
+          "line": 934,
+          "owner": "_RecordEditorType.build._RecordEditorWidget.save_record",
+          "call": "QMessageBox.warning",
+          "literal_arguments": [
+            "分数范围错误",
+            "分数应在 0 到 100 之间。"
+          ]
+        }
+      ],
+      "worker_and_submit_sites": [
+        {
+          "line": 230,
+          "owner": "_RecordEditorType.build._RecordEditorWidget.__init__",
+          "call": "AsyncTaskService",
+          "kind": "task call"
+        },
+        {
+          "line": 433,
+          "owner": "_RecordEditorType.build._RecordEditorWidget.recognize_problems_with_llm",
+          "call": "self._recognition_service.submit",
+          "kind": "task call"
+        }
+      ],
+      "direct_service_calls": [
+        {
+          "line": 230,
+          "owner": "_RecordEditorType.build._RecordEditorWidget.__init__",
+          "call": "AsyncTaskService",
+          "service": "study_app.core.async_tasks.AsyncTaskService"
+        },
+        {
+          "line": 306,
+          "owner": "_RecordEditorType.build._RecordEditorWidget.refresh_modules",
+          "call": "list_module_names",
+          "service": "study_app.data.database.list_module_names"
+        },
+        {
+          "line": 328,
+          "owner": "_RecordEditorType.build._RecordEditorWidget.search_files_by_hint",
+          "call": "locate_files",
+          "service": "study_app.data.file_locator.locate_files"
+        },
+        {
+          "line": 400,
+          "owner": "_RecordEditorType.build._RecordEditorWidget.should_use_llm_for_record_parser",
+          "call": "is_llm_feature_enabled",
+          "service": "study_app.ai.providers.is_llm_feature_enabled"
+        },
+        {
+          "line": 402,
+          "owner": "_RecordEditorType.build._RecordEditorWidget.should_use_llm_for_record_parser",
+          "call": "is_llm_feature_enabled",
+          "service": "study_app.ai.providers.is_llm_feature_enabled"
+        },
+        {
+          "line": 435,
+          "owner": "_RecordEditorType.build._RecordEditorWidget.recognize_problems_with_llm",
+          "call": "parse_record_payload_with_llm",
+          "service": "study_app.ai.record_parser.parse_record_payload_with_llm"
+        },
+        {
+          "line": 667,
+          "owner": "_RecordEditorType.build._RecordEditorWidget.extract_attachment_context",
+          "call": "extract_text_from_files",
+          "service": "study_app.data.text_extractor.extract_text_from_files"
+        },
+        {
+          "line": 668,
+          "owner": "_RecordEditorType.build._RecordEditorWidget.extract_attachment_context",
+          "call": "combined_extracted_text",
+          "service": "study_app.data.text_extractor.combined_extracted_text"
+        },
+        {
+          "line": 669,
+          "owner": "_RecordEditorType.build._RecordEditorWidget.extract_attachment_context",
+          "call": "parse_problem_blocks_from_text",
+          "service": "study_app.ai.attachment_parser.parse_problem_blocks_from_text"
+        },
+        {
+          "line": 831,
+          "owner": "_RecordEditorType.build._RecordEditorWidget.infer_problem_fields",
+          "call": "_infer_correctness_from_text",
+          "service": "study_app.data.database._infer_correctness_from_text"
+        }
+      ]
+    },
+    {
+      "file": "study_app/ui/record_view_model.py",
+      "page_factories": [],
+      "qt_classes": [],
+      "dialogs_and_menus": [],
+      "worker_and_submit_sites": [],
+      "direct_service_calls": []
+    },
+    {
+      "file": "study_app/ui/records_page.py",
+      "page_factories": [
+        {
+          "line": 34,
+          "owner": "",
+          "call": "records_page"
+        }
+      ],
+      "qt_classes": [],
+      "dialogs_and_menus": [],
+      "worker_and_submit_sites": [],
+      "direct_service_calls": [
+        {
+          "line": 19,
+          "owner": "recent_records_card",
+          "call": "list_recent_records",
+          "service": "study_app.data.database.list_recent_records"
+        }
+      ]
+    },
+    {
+      "file": "study_app/ui/settings_page.py",
+      "page_factories": [
+        {
+          "line": 15,
+          "owner": "",
+          "call": "settings_page"
+        }
+      ],
+      "qt_classes": [
+        {
+          "line": 30,
+          "owner": "settings_page",
+          "call": "SettingsScrollArea",
+          "bases": [
+            "QScrollArea"
+          ]
+        }
+      ],
+      "dialogs_and_menus": [
+        {
+          "line": 113,
+          "owner": "settings_page.poll_maintenance",
+          "call": "QMessageBox.critical",
+          "literal_arguments": []
+        },
+        {
+          "line": 124,
+          "owner": "settings_page.poll_maintenance",
+          "call": "QMessageBox.information",
+          "literal_arguments": [
+            "备份完成"
+          ]
+        },
+        {
+          "line": 249,
+          "owner": "settings_page.save_llm_config",
+          "call": "QMessageBox.warning",
+          "literal_arguments": [
+            "格式错误",
+            "token 上限和预算需要填写数字。"
+          ]
+        },
+        {
+          "line": 268,
+          "owner": "settings_page.save_llm_config",
+          "call": "QMessageBox.information",
+          "literal_arguments": [
+            "已保存",
+            "LLM 设置已保存到本机。"
+          ]
+        },
+        {
+          "line": 373,
+          "owner": "settings_page.make_auto_exec_toggle.toggle",
+          "call": "QMessageBox.warning",
+          "literal_arguments": [
+            "保存失败"
+          ]
+        }
+      ],
+      "worker_and_submit_sites": [
+        {
+          "line": 20,
+          "owner": "settings_page",
+          "call": "AsyncTaskService",
+          "kind": "task call"
+        },
+        {
+          "line": 96,
+          "owner": "settings_page.start_maintenance",
+          "call": "service.submit",
+          "kind": "task call"
+        }
+      ],
+      "direct_service_calls": [
+        {
+          "line": 20,
+          "owner": "settings_page",
+          "call": "AsyncTaskService",
+          "service": "study_app.core.async_tasks.AsyncTaskService"
+        },
+        {
+          "line": 137,
+          "owner": "settings_page.open_backup_folder",
+          "call": "BACKUP_ROOT.mkdir",
+          "service": "study_app.data.backup.BACKUP_ROOT.mkdir"
+        },
+        {
+          "line": 159,
+          "owner": "settings_page",
+          "call": "load_llm_settings",
+          "service": "study_app.ai.providers.load_llm_settings"
+        },
+        {
+          "line": 163,
+          "owner": "settings_page",
+          "call": "PROVIDERS.items",
+          "service": "study_app.ai.providers.PROVIDERS.items"
+        },
+        {
+          "line": 180,
+          "owner": "settings_page",
+          "call": "LLM_FEATURES.items",
+          "service": "study_app.ai.providers.LLM_FEATURES.items"
+        },
+        {
+          "line": 198,
+          "owner": "settings_page",
+          "call": "provider_status",
+          "service": "study_app.ai.providers.provider_status"
+        },
+        {
+          "line": 252,
+          "owner": "settings_page.save_llm_config",
+          "call": "LLMSettings",
+          "service": "study_app.ai.providers.LLMSettings"
+        },
+        {
+          "line": 266,
+          "owner": "settings_page.save_llm_config",
+          "call": "save_llm_settings",
+          "service": "study_app.ai.providers.save_llm_settings"
+        },
+        {
+          "line": 267,
+          "owner": "settings_page.save_llm_config",
+          "call": "provider_status",
+          "service": "study_app.ai.providers.provider_status"
+        },
+        {
+          "line": 313,
+          "owner": "settings_page",
+          "call": "load_privacy_settings",
+          "service": "study_app.core.learning_assistant_policy.load_privacy_settings"
+        },
+        {
+          "line": 335,
+          "owner": "settings_page.on_advisor_mode_changed",
+          "call": "load_privacy_settings",
+          "service": "study_app.core.learning_assistant_policy.load_privacy_settings"
+        },
+        {
+          "line": 336,
+          "owner": "settings_page.on_advisor_mode_changed",
+          "call": "save_privacy_settings",
+          "service": "study_app.core.learning_assistant_policy.save_privacy_settings"
+        },
+        {
+          "line": 357,
+          "owner": "settings_page",
+          "call": "load_auto_exec_policy",
+          "service": "study_app.core.learning_assistant_policy.load_auto_exec_policy"
+        },
+        {
+          "line": 369,
+          "owner": "settings_page.make_auto_exec_toggle.toggle",
+          "call": "load_auto_exec_policy",
+          "service": "study_app.core.learning_assistant_policy.load_auto_exec_policy"
+        },
+        {
+          "line": 371,
+          "owner": "settings_page.make_auto_exec_toggle.toggle",
+          "call": "save_auto_exec_policy",
+          "service": "study_app.core.learning_assistant_policy.save_auto_exec_policy"
+        },
+        {
+          "line": 383,
+          "owner": "settings_page",
+          "call": "ASSISTANT_ACTION_LABELS.get",
+          "service": "study_app.core.learning_assistant_schema.ACTION_LABELS.get"
+        },
+        {
+          "line": 400,
+          "owner": "settings_page",
+          "call": "list_llm_call_audits",
+          "service": "study_app.data.database.list_llm_call_audits"
+        }
+      ]
+    },
+    {
+      "file": "study_app/ui/study_plan_page.py",
+      "page_factories": [
+        {
+          "line": 1870,
+          "owner": "",
+          "call": "study_plan_page"
+        }
+      ],
+      "qt_classes": [
+        {
+          "line": 793,
+          "owner": "_worker_types",
+          "call": "WorkerSignalRelay",
+          "bases": [
+            "QObject"
+          ]
+        },
+        {
+          "line": 827,
+          "owner": "_worker_types",
+          "call": "PlanGenerationThread",
+          "bases": [
+            "QObject"
+          ]
+        },
+        {
+          "line": 897,
+          "owner": "_worker_types",
+          "call": "ChatGPTBridgeThread",
+          "bases": [
+            "QObject"
+          ]
+        },
+        {
+          "line": 1102,
+          "owner": "_BudgetPlanPanel.__init__",
+          "call": "BudgetStatusLabel",
+          "bases": [
+            "QLabel"
+          ]
+        }
+      ],
+      "dialogs_and_menus": [
+        {
+          "line": 583,
+          "owner": "_ChatGPTPDFSession.stop",
+          "call": "QMessageBox.warning",
+          "literal_arguments": [
+            "停止 PDF 生成失败",
+            "未能停止当前 PDF 生成任务，请稍后重试。"
+          ]
+        },
+        {
+          "line": 590,
+          "owner": "_ChatGPTPDFSession.stop",
+          "call": "QMessageBox.warning",
+          "literal_arguments": [
+            "停止 PDF 生成失败",
+            "未能停止当前 PDF 生成任务，请稍后重试。"
+          ]
+        },
+        {
+          "line": 600,
+          "owner": "_ChatGPTPDFSession.stop",
+          "call": "QMessageBox.information",
+          "literal_arguments": [
+            "已停止",
+            "已停止当前 ChatGPT PDF 生成流程。"
+          ]
+        },
+        {
+          "line": 624,
+          "owner": "_ChatGPTPDFSession._completed",
+          "call": "QMessageBox.warning",
+          "literal_arguments": [
+            "PDF 已下载但未打开"
+          ]
+        },
+        {
+          "line": 631,
+          "owner": "_ChatGPTPDFSession._completed",
+          "call": "QMessageBox.information",
+          "literal_arguments": [
+            "PDF 已生成"
+          ]
+        },
+        {
+          "line": 639,
+          "owner": "_ChatGPTPDFSession._completed",
+          "call": "QMessageBox.warning",
+          "literal_arguments": [
+            "ChatGPT 自动生成失败",
+            "ChatGPT 未能完成 PDF 生成。为避免丢失，出题提示词已复制到剪贴板。"
+          ]
+        },
+        {
+          "line": 654,
+          "owner": "_ChatGPTPDFSession._failed",
+          "call": "QMessageBox.warning",
+          "literal_arguments": [
+            "ChatGPT 自动生成失败",
+            "ChatGPT 桌面桥接发生错误，请检查桌面端状态后重试。"
+          ]
+        },
+        {
+          "line": 666,
+          "owner": "_ChatGPTPDFSession._show_existing_worker",
+          "call": "QMessageBox.information",
+          "literal_arguments": [
+            "正在生成 PDF",
+            "已有一个 ChatGPT PDF 生成任务正在运行。你可以点击“停止 PDF 生成”后再启动新的任务。"
+          ]
+        },
+        {
+          "line": 705,
+          "owner": "_ChatGPTPDFSession.start",
+          "call": "QMessageBox.warning",
+          "literal_arguments": [
+            "启动 PDF 生成失败",
+            "未能启动 PDF 生成任务，请稍后重试。"
+          ]
+        },
+        {
+          "line": 967,
+          "owner": "_edit_final_review_modes",
+          "call": "QDialog",
+          "literal_arguments": []
+        },
+        {
+          "line": 1446,
+          "owner": "_DetailedPlanPanel.manage_final_review_modes",
+          "call": "QMessageBox.information",
+          "literal_arguments": [
+            "期末复习模式已更新"
+          ]
+        },
+        {
+          "line": 1473,
+          "owner": "_DetailedPlanPanel.finish_plan_generation",
+          "call": "QMessageBox.warning",
+          "literal_arguments": [
+            "LLM 计划生成失败"
+          ]
+        },
+        {
+          "line": 1484,
+          "owner": "_DetailedPlanPanel.fail_plan_generation",
+          "call": "QMessageBox.warning",
+          "literal_arguments": [
+            "计划生成失败"
+          ]
+        },
+        {
+          "line": 1500,
+          "owner": "_DetailedPlanPanel.render_plan",
+          "call": "QMessageBox.information",
+          "literal_arguments": [
+            "未使用 LLM 生成计划"
+          ]
+        },
+        {
+          "line": 1531,
+          "owner": "_DetailedPlanPanel.render_plan.on_timeout",
+          "call": "QMessageBox.warning",
+          "literal_arguments": [
+            "LLM 计划生成超时",
+            "LLM 计划生成超过 90 秒仍未返回，系统已停止等待，避免界面长时间卡住。\n\n如果后台请求稍后返回，应用会忽略这次过期结果；你可以重新点击生成计划。"
+          ]
+        },
+        {
+          "line": 1545,
+          "owner": "_DetailedPlanPanel.render_plan",
+          "call": "QMessageBox.information",
+          "literal_arguments": [
+            "未使用 LLM 生成计划"
+          ]
+        },
+        {
+          "line": 1657,
+          "owner": "_DetailedPlanPanel.record_plan_result",
+          "call": "QMessageBox.critical",
+          "literal_arguments": [
+            "记录失败"
+          ]
+        },
+        {
+          "line": 1664,
+          "owner": "_DetailedPlanPanel.record_plan_result",
+          "call": "QMessageBox.warning",
+          "literal_arguments": [
+            "记录已保存"
+          ]
+        },
+        {
+          "line": 1670,
+          "owner": "_DetailedPlanPanel.record_plan_result",
+          "call": "QMessageBox.information",
+          "literal_arguments": [
+            "已记录"
+          ]
+        },
+        {
+          "line": 1684,
+          "owner": "_DetailedPlanPanel.copy_practice_prompt",
+          "call": "QMessageBox.information",
+          "literal_arguments": [
+            "已复制",
+            "已复制 LeetCode 原题清单，可直接按官方链接练习并提交。"
+          ]
+        },
+        {
+          "line": 1686,
+          "owner": "_DetailedPlanPanel.copy_practice_prompt",
+          "call": "QMessageBox.information",
+          "literal_arguments": [
+            "已复制",
+            "已复制出题提示词，可直接粘贴给 Codex、GPT 或其他 LLM。"
+          ]
+        },
+        {
+          "line": 1692,
+          "owner": "_DetailedPlanPanel.send_practice_prompt_to_chatgpt",
+          "call": "QMessageBox.information",
+          "literal_arguments": [
+            "无需生成 PDF",
+            "算法设计与 OJ 训练使用 LeetCode 官方原题和官方测试集；系统已在计划中直接匹配题目，不再生成出题提示词。"
+          ]
+        },
+        {
+          "line": 1709,
+          "owner": "_DetailedPlanPanel.generate_local_practice_pdf",
+          "call": "QMessageBox.warning",
+          "literal_arguments": [
+            "本地练习卷生成失败"
+          ]
+        },
+        {
+          "line": 1711,
+          "owner": "_DetailedPlanPanel.generate_local_practice_pdf",
+          "call": "QMessageBox.information",
+          "literal_arguments": [
+            "本地练习卷已生成"
+          ]
+        },
+        {
+          "line": 1718,
+          "owner": "_DetailedPlanPanel.copy_plan_practice_context",
+          "call": "QMessageBox.information",
+          "literal_arguments": [
+            "暂无计划",
+            "请先生成今日计划，再复制题库上下文。"
+          ]
+        },
+        {
+          "line": 1726,
+          "owner": "_DetailedPlanPanel.copy_plan_practice_context",
+          "call": "QMessageBox.information",
+          "literal_arguments": [
+            "暂无作业",
+            "当前计划中还没有可导出的每日作业。"
+          ]
+        },
+        {
+          "line": 1735,
+          "owner": "_DetailedPlanPanel.copy_plan_practice_context",
+          "call": "QMessageBox.information",
+          "literal_arguments": [
+            "已复制"
+          ]
+        },
+        {
+          "line": 1742,
+          "owner": "_DetailedPlanPanel.send_mock_exam_pdf",
+          "call": "QMessageBox.information",
+          "literal_arguments": [
+            "请选择学科",
+            "生成模拟卷前，请先在计划范围中选择一个具体学科。"
+          ]
+        },
+        {
+          "line": 1750,
+          "owner": "_DetailedPlanPanel.send_mock_exam_pdf",
+          "call": "QMessageBox.warning",
+          "literal_arguments": [
+            "模拟卷提示词生成失败"
+          ]
+        },
+        {
+          "line": 1761,
+          "owner": "_DetailedPlanPanel.maybe_show_completed_day_feedback",
+          "call": "QMessageBox.information",
+          "literal_arguments": [
+            "当天计划已完成"
+          ]
+        }
+      ],
+      "worker_and_submit_sites": [
+        {
+          "line": 848,
+          "owner": "_worker_types.PlanGenerationThread.start",
+          "call": "threading.Thread",
+          "kind": "task call"
+        },
+        {
+          "line": 918,
+          "owner": "_worker_types.ChatGPTBridgeThread.start",
+          "call": "threading.Thread",
+          "kind": "task call"
+        }
+      ],
+      "direct_service_calls": [
+        {
+          "line": 98,
+          "owner": "_shutdown_chatgpt_bridge_workers",
+          "call": "request_chatgpt_pdf_shutdown",
+          "service": "study_app.integrations.chatgpt_desktop_bridge.request_chatgpt_pdf_shutdown"
+        },
+        {
+          "line": 99,
+          "owner": "_shutdown_chatgpt_bridge_workers",
+          "call": "cancel_chatgpt_pdf_generation",
+          "service": "study_app.integrations.chatgpt_desktop_bridge.cancel_chatgpt_pdf_generation"
+        },
+        {
+          "line": 115,
+          "owner": "_shutdown_chatgpt_bridge_workers",
+          "call": "cleanup_temp_artifacts",
+          "service": "study_app.integrations.chatgpt_desktop_bridge.cleanup_chatgpt_temp_artifacts"
+        },
+        {
+          "line": 128,
+          "owner": "generate_local_practice_for_plan_line",
+          "call": "is_oj_plan_homework",
+          "service": "study_app.core.practice_spec.is_oj_plan_homework"
+        },
+        {
+          "line": 135,
+          "owner": "generate_local_practice_for_plan_line",
+          "call": "spec_from_homework",
+          "service": "study_app.core.local_practice_service.spec_from_homework"
+        },
+        {
+          "line": 136,
+          "owner": "generate_local_practice_for_plan_line",
+          "call": "generate_local_practice_paper",
+          "service": "study_app.core.local_practice_service.generate_local_practice_paper"
+        },
+        {
+          "line": 184,
+          "owner": "_prepare_homework_result",
+          "call": "infer_subject_topic_from_plan_line",
+          "service": "study_app.core.study_plan_items.infer_subject_topic_from_plan_line"
+        },
+        {
+          "line": 187,
+          "owner": "_prepare_homework_result",
+          "call": "get_setting",
+          "service": "study_app.data.database.get_setting"
+        },
+        {
+          "line": 197,
+          "owner": "_prepare_homework_result",
+          "call": "set_setting",
+          "service": "study_app.data.database.set_setting"
+        },
+        {
+          "line": 200,
+          "owner": "_prepare_homework_result",
+          "call": "planned_homework_score_result",
+          "service": "study_app.core.study_plan_feedback.planned_homework_score_result"
+        },
+        {
+          "line": 232,
+          "owner": "_commit_homework_result",
+          "call": "add_learning_record",
+          "service": "study_app.data.database.add_learning_record"
+        },
+        {
+          "line": 249,
+          "owner": "_refresh_homework_feedback",
+          "call": "set_setting",
+          "service": "study_app.data.database.set_setting"
+        },
+        {
+          "line": 250,
+          "owner": "_refresh_homework_feedback",
+          "call": "delete_settings_by_prefix",
+          "service": "study_app.data.database.delete_settings_by_prefix"
+        },
+        {
+          "line": 251,
+          "owner": "_refresh_homework_feedback",
+          "call": "load_dashboard_state",
+          "service": "study_app.core.dashboard.load_dashboard_state"
+        },
+        {
+          "line": 261,
+          "owner": "_refresh_homework_feedback",
+          "call": "set_setting",
+          "service": "study_app.data.database.set_setting"
+        },
+        {
+          "line": 281,
+          "owner": "_prepare_budget_plan",
+          "call": "validate_day_budget_input",
+          "service": "study_app.core.day_budget_input.validate_day_budget_input"
+        },
+        {
+          "line": 283,
+          "owner": "_prepare_budget_plan",
+          "call": "validate_subject_exam_date",
+          "service": "study_app.core.day_budget_input.validate_subject_exam_date"
+        },
+        {
+          "line": 294,
+          "owner": "_prepare_budget_plan",
+          "call": "make_task_estimate",
+          "service": "study_app.core.task_estimates.make_task_estimate"
+        },
+        {
+          "line": 300,
+          "owner": "_prepare_budget_plan",
+          "call": "get_budgeted_day_plan",
+          "service": "study_app.data.database.get_budgeted_day_plan"
+        },
+        {
+          "line": 314,
+          "owner": "_prepare_budget_plan",
+          "call": "build_budgeted_day_plan",
+          "service": "study_app.core.budgeted_day_plan.build_budgeted_day_plan"
+        },
+        {
+          "line": 315,
+          "owner": "_prepare_budget_plan",
+          "call": "BudgetPlanInput",
+          "service": "study_app.core.budgeted_day_plan.BudgetPlanInput"
+        },
+        {
+          "line": 323,
+          "owner": "_prepare_budget_plan",
+          "call": "CandidateCollection",
+          "service": "study_app.core.plan_candidates.CandidateCollection"
+        },
+        {
+          "line": 368,
+          "owner": "_save_budget_plan",
+          "call": "save_study_day_budget",
+          "service": "study_app.data.database.save_study_day_budget"
+        },
+        {
+          "line": 370,
+          "owner": "_save_budget_plan",
+          "call": "save_subject_exam_date",
+          "service": "study_app.data.database.save_subject_exam_date"
+        },
+        {
+          "line": 372,
+          "owner": "_save_budget_plan",
+          "call": "save_task_estimate",
+          "service": "study_app.data.database.save_task_estimate"
+        },
+        {
+          "line": 375,
+          "owner": "_save_budget_plan",
+          "call": "create_budgeted_day_plan",
+          "service": "study_app.data.database.create_budgeted_day_plan"
+        },
+        {
+          "line": 381,
+          "owner": "_reusable_active_plan",
+          "call": "get_active_study_plan",
+          "service": "study_app.data.database.get_active_study_plan"
+        },
+        {
+          "line": 384,
+          "owner": "_reusable_active_plan",
+          "call": "should_refresh_plan_for_model",
+          "service": "study_app.ai.study_plan_service.should_refresh_plan_for_model"
+        },
+        {
+          "line": 385,
+          "owner": "_reusable_active_plan",
+          "call": "should_upgrade_plan_to_llm",
+          "service": "study_app.ai.study_plan_service.should_upgrade_plan_to_llm"
+        },
+        {
+          "line": 398,
+          "owner": "_save_generated_plan",
+          "call": "revalidate_subject_revision",
+          "service": "study_app.core.async_tasks.revalidate_subject_revision"
+        },
+        {
+          "line": 399,
+          "owner": "_save_generated_plan",
+          "call": "create_study_plan",
+          "service": "study_app.data.database.create_study_plan"
+        },
+        {
+          "line": 405,
+          "owner": "_save_generated_plan",
+          "call": "build_study_plan_items",
+          "service": "study_app.core.study_plan_items.build_study_plan_items"
+        },
+        {
+          "line": 407,
+          "owner": "_save_generated_plan",
+          "call": "delete_settings_by_prefix",
+          "service": "study_app.data.database.delete_settings_by_prefix"
+        },
+        {
+          "line": 417,
+          "owner": "_apply_final_review_modes",
+          "call": "set_subject_phase",
+          "service": "study_app.core.study_phase.set_subject_phase"
+        },
+        {
+          "line": 418,
+          "owner": "_apply_final_review_modes",
+          "call": "archive_active_study_plan",
+          "service": "study_app.data.database.archive_active_study_plan"
+        },
+        {
+          "line": 421,
+          "owner": "_apply_final_review_modes",
+          "call": "archive_active_study_plan",
+          "service": "study_app.data.database.archive_active_study_plan"
+        },
+        {
+          "line": 422,
+          "owner": "_apply_final_review_modes",
+          "call": "delete_settings_by_prefix",
+          "service": "study_app.data.database.delete_settings_by_prefix"
+        },
+        {
+          "line": 438,
+          "owner": "_completed_day_feedback",
+          "call": "get_setting",
+          "service": "study_app.data.database.get_setting"
+        },
+        {
+          "line": 441,
+          "owner": "_completed_day_feedback",
+          "call": "plan_day_feedback_details",
+          "service": "study_app.core.study_plan_feedback.plan_day_feedback_details"
+        },
+        {
+          "line": 454,
+          "owner": "_save_completed_day_feedback_markers",
+          "call": "set_setting",
+          "service": "study_app.data.database.set_setting"
+        },
+        {
+          "line": 458,
+          "owner": "_set_plan_item_checked",
+          "call": "update_study_plan_item_state",
+          "service": "study_app.data.database.update_study_plan_item_state"
+        },
+        {
+          "line": 462,
+          "owner": "_start_plan_generation_state",
+          "call": "delete_settings_by_prefix",
+          "service": "study_app.data.database.delete_settings_by_prefix"
+        },
+        {
+          "line": 463,
+          "owner": "_start_plan_generation_state",
+          "call": "load_dashboard_state",
+          "service": "study_app.core.dashboard.load_dashboard_state"
+        },
+        {
+          "line": 467,
+          "owner": "_archive_current_plan",
+          "call": "archive_active_study_plan",
+          "service": "study_app.data.database.archive_active_study_plan"
+        },
+        {
+          "line": 468,
+          "owner": "_archive_current_plan",
+          "call": "delete_settings_by_prefix",
+          "service": "study_app.data.database.delete_settings_by_prefix"
+        },
+        {
+          "line": 879,
+          "owner": "_worker_types.PlanGenerationThread.run",
+          "call": "generate_study_plan_with_optional_llm",
+          "service": "study_app.ai.study_plan_service.generate_study_plan_with_optional_llm"
+        },
+        {
+          "line": 884,
+          "owner": "_worker_types.PlanGenerationThread.run",
+          "call": "generate_study_plan_with_optional_llm",
+          "service": "study_app.ai.study_plan_service.generate_study_plan_with_optional_llm"
+        },
+        {
+          "line": 946,
+          "owner": "_worker_types.ChatGPTBridgeThread.run",
+          "call": "generate_pdf_with_chatgpt",
+          "service": "study_app.integrations.chatgpt_desktop_bridge.generate_pdf_with_chatgpt"
+        },
+        {
+          "line": 958,
+          "owner": "_worker_types.ChatGPTBridgeThread.cancel",
+          "call": "cancel_chatgpt_pdf_generation",
+          "service": "study_app.integrations.chatgpt_desktop_bridge.cancel_chatgpt_pdf_generation"
+        },
+        {
+          "line": 988,
+          "owner": "_edit_final_review_modes",
+          "call": "is_final_review",
+          "service": "study_app.core.study_phase.is_final_review"
+        },
+        {
+          "line": 990,
+          "owner": "_edit_final_review_modes",
+          "call": "exam_scope_label",
+          "service": "study_app.core.study_phase.exam_scope_label"
+        },
+        {
+          "line": 1083,
+          "owner": "_BudgetPlanPanel.__init__",
+          "call": "build_plan_candidates",
+          "service": "study_app.core.plan_candidates.build_plan_candidates"
+        },
+        {
+          "line": 1137,
+          "owner": "_BudgetPlanPanel._load_saved_inputs",
+          "call": "get_study_day_budget",
+          "service": "study_app.data.database.get_study_day_budget"
+        },
+        {
+          "line": 1141,
+          "owner": "_BudgetPlanPanel._load_saved_inputs",
+          "call": "get_subject_exam_date",
+          "service": "study_app.data.database.get_subject_exam_date"
+        },
+        {
+          "line": 1144,
+          "owner": "_BudgetPlanPanel._load_saved_inputs",
+          "call": "get_task_estimate",
+          "service": "study_app.data.database.get_task_estimate"
+        },
+        {
+          "line": 1146,
+          "owner": "_BudgetPlanPanel._load_saved_inputs",
+          "call": "make_assistant_task_estimate",
+          "service": "study_app.core.task_estimates.make_assistant_task_estimate"
+        },
+        {
+          "line": 1154,
+          "owner": "_BudgetPlanPanel._load_saved_inputs",
+          "call": "get_budgeted_day_plan",
+          "service": "study_app.data.database.get_budgeted_day_plan"
+        },
+        {
+          "line": 1196,
+          "owner": "_BudgetPlanPanel.render_budgeted_plan",
+          "call": "get_budgeted_day_plan",
+          "service": "study_app.data.database.get_budgeted_day_plan"
+        },
+        {
+          "line": 1421,
+          "owner": "_DetailedPlanPanel.refresh_phase_status",
+          "call": "is_final_review",
+          "service": "study_app.core.study_phase.is_final_review"
+        },
+        {
+          "line": 1425,
+          "owner": "_DetailedPlanPanel.refresh_phase_status",
+          "call": "exam_scope_label",
+          "service": "study_app.core.study_phase.exam_scope_label"
+        },
+        {
+          "line": 1424,
+          "owner": "_DetailedPlanPanel.refresh_phase_status",
+          "call": "exam_scope_label",
+          "service": "study_app.core.study_phase.exam_scope_label"
+        },
+        {
+          "line": 1442,
+          "owner": "_DetailedPlanPanel.manage_final_review_modes",
+          "call": "load_dashboard_state",
+          "service": "study_app.core.dashboard.load_dashboard_state"
+        },
+        {
+          "line": 1444,
+          "owner": "_DetailedPlanPanel.manage_final_review_modes",
+          "call": "get_active_study_plan",
+          "service": "study_app.data.database.get_active_study_plan"
+        },
+        {
+          "line": 1468,
+          "owner": "_DetailedPlanPanel.finish_plan_generation",
+          "call": "get_active_study_plan",
+          "service": "study_app.data.database.get_active_study_plan"
+        },
+        {
+          "line": 1495,
+          "owner": "_DetailedPlanPanel.render_plan",
+          "call": "llm_plan_unavailable_hint",
+          "service": "study_app.ai.study_plan_service.llm_plan_unavailable_hint"
+        },
+        {
+          "line": 1504,
+          "owner": "_DetailedPlanPanel.render_plan",
+          "call": "current_study_plan_signature",
+          "service": "study_app.ai.study_plan_service.current_study_plan_signature"
+        },
+        {
+          "line": 1507,
+          "owner": "_DetailedPlanPanel.render_plan",
+          "call": "capture_subject_revision",
+          "service": "study_app.core.async_tasks.capture_subject_revision"
+        },
+        {
+          "line": 1553,
+          "owner": "_DetailedPlanPanel.render_saved_plan",
+          "call": "load_dashboard_state",
+          "service": "study_app.core.dashboard.load_dashboard_state"
+        },
+        {
+          "line": 1554,
+          "owner": "_DetailedPlanPanel.render_saved_plan",
+          "call": "should_refresh_plan_for_model",
+          "service": "study_app.ai.study_plan_service.should_refresh_plan_for_model"
+        },
+        {
+          "line": 1646,
+          "owner": "_DetailedPlanPanel.record_plan_check",
+          "call": "get_active_study_plan",
+          "service": "study_app.data.database.get_active_study_plan"
+        },
+        {
+          "line": 1662,
+          "owner": "_DetailedPlanPanel.record_plan_result",
+          "call": "get_active_study_plan",
+          "service": "study_app.data.database.get_active_study_plan"
+        },
+        {
+          "line": 1681,
+          "owner": "_DetailedPlanPanel.copy_practice_prompt",
+          "call": "build_practice_generation_prompt",
+          "service": "study_app.core.practice_prompts.build_practice_generation_prompt"
+        },
+        {
+          "line": 1683,
+          "owner": "_DetailedPlanPanel.copy_practice_prompt",
+          "call": "is_oj_plan_homework",
+          "service": "study_app.core.practice_spec.is_oj_plan_homework"
+        },
+        {
+          "line": 1689,
+          "owner": "_DetailedPlanPanel.send_practice_prompt_to_chatgpt",
+          "call": "is_oj_plan_homework",
+          "service": "study_app.core.practice_spec.is_oj_plan_homework"
+        },
+        {
+          "line": 1698,
+          "owner": "_DetailedPlanPanel.send_practice_prompt_to_chatgpt",
+          "call": "build_practice_generation_prompt",
+          "service": "study_app.core.practice_prompts.build_practice_generation_prompt"
+        },
+        {
+          "line": 1716,
+          "owner": "_DetailedPlanPanel.copy_plan_practice_context",
+          "call": "get_active_study_plan",
+          "service": "study_app.data.database.get_active_study_plan"
+        },
+        {
+          "line": 1730,
+          "owner": "_DetailedPlanPanel.copy_plan_practice_context",
+          "call": "is_oj_plan_homework",
+          "service": "study_app.core.practice_spec.is_oj_plan_homework"
+        },
+        {
+          "line": 1731,
+          "owner": "_DetailedPlanPanel.copy_plan_practice_context",
+          "call": "build_oj_practice_list",
+          "service": "study_app.core.practice_prompts.build_oj_practice_list"
+        },
+        {
+          "line": 1733,
+          "owner": "_DetailedPlanPanel.copy_plan_practice_context",
+          "call": "build_practice_generation_prompt",
+          "service": "study_app.core.practice_prompts.build_practice_generation_prompt"
+        },
+        {
+          "line": 1745,
+          "owner": "_DetailedPlanPanel.send_mock_exam_pdf",
+          "call": "build_mock_exam_generation_prompt",
+          "service": "study_app.core.practice_prompts.build_mock_exam_generation_prompt"
+        },
+        {
+          "line": 1756,
+          "owner": "_DetailedPlanPanel.maybe_show_completed_day_feedback",
+          "call": "get_active_study_plan",
+          "service": "study_app.data.database.get_active_study_plan"
+        },
+        {
+          "line": 1804,
+          "owner": "_StudyPlanPage.__init__",
+          "call": "get_active_study_plan",
+          "service": "study_app.data.database.get_active_study_plan"
+        },
+        {
+          "line": 1853,
+          "owner": "_StudyPlanPage.refresh_scope_views",
+          "call": "get_active_study_plan",
+          "service": "study_app.data.database.get_active_study_plan"
+        },
+        {
+          "line": 1880,
+          "owner": "plan_day_feedback_card",
+          "call": "plan_day_feedback_details",
+          "service": "study_app.core.study_plan_feedback.plan_day_feedback_details"
+        },
+        {
+          "line": 1892,
+          "owner": "plan_day_feedback_card",
+          "call": "humanize_plan_text",
+          "service": "study_app.core.study_plan_items.humanize_plan_text"
+        },
+        {
+          "line": 1928,
+          "owner": "plan_section_card.add_interactive_row",
+          "call": "humanize_plan_text",
+          "service": "study_app.core.study_plan_items.humanize_plan_text"
+        },
+        {
+          "line": 1959,
+          "owner": "plan_section_card.add_interactive_row",
+          "call": "is_oj_plan_homework",
+          "service": "study_app.core.practice_spec.is_oj_plan_homework"
+        },
+        {
+          "line": 2031,
+          "owner": "plan_section_card",
+          "call": "split_short_plan_item",
+          "service": "study_app.core.study_plan_items.split_short_plan_item"
+        }
+      ]
+    },
+    {
+      "file": "study_app/ui/subject_lifecycle_page.py",
+      "page_factories": [
+        {
+          "line": 115,
+          "owner": "",
+          "call": "subject_lifecycle_page"
+        }
+      ],
+      "qt_classes": [],
+      "dialogs_and_menus": [
+        {
+          "line": 168,
+          "owner": "subject_lifecycle_page.action",
+          "call": "QMessageBox.warning",
+          "literal_arguments": [
+            "生命周期操作失败"
+          ]
+        }
+      ],
+      "worker_and_submit_sites": [],
+      "direct_service_calls": [
+        {
+          "line": 18,
+          "owner": "load_subject_lifecycle_view",
+          "call": "SubjectCatalogRepository",
+          "service": "study_app.data.subject_repository.SubjectCatalogRepository"
+        },
+        {
+          "line": 150,
+          "owner": "subject_lifecycle_page.action",
+          "call": "approve_changeset",
+          "service": "study_app.core.subject_changeset.approve_changeset"
+        },
+        {
+          "line": 154,
+          "owner": "subject_lifecycle_page.action",
+          "call": "execute_switch_changeset",
+          "service": "study_app.core.subject_executor.execute_switch_changeset"
+        },
+        {
+          "line": 161,
+          "owner": "subject_lifecycle_page.action",
+          "call": "process_projection_outbox",
+          "service": "study_app.core.subject_projection.process_projection_outbox"
+        }
+      ]
+    },
+    {
+      "file": "study_app/ui/subject_management_dialog.py",
+      "page_factories": [],
+      "qt_classes": [
+        {
+          "line": 16,
+          "owner": "subject_management_dialog",
+          "call": "Dialog",
+          "bases": [
+            "QDialog"
+          ]
+        },
+        {
+          "line": 30,
+          "owner": "subject_management_dialog",
+          "call": "Worker",
+          "bases": [
+            "QThread"
+          ]
+        }
+      ],
+      "dialogs_and_menus": [
+        {
+          "line": 132,
+          "owner": "subject_management_dialog.import_outline",
+          "call": "QFileDialog.getOpenFileName",
+          "literal_arguments": [
+            "选择已核对的学科目录",
+            "",
+            "目录文件 (*.txt *.md *.json)"
+          ]
+        }
+      ],
+      "worker_and_submit_sites": [
+        {
+          "line": 30,
+          "owner": "subject_management_dialog",
+          "call": "Worker",
+          "kind": "worker class",
+          "bases": [
+            "QThread"
+          ]
+        }
+      ],
+      "direct_service_calls": [
+        {
+          "line": 35,
+          "owner": "subject_management_dialog.Worker.run",
+          "call": "execute_management",
+          "service": "study_app.core.subject_management.execute_management"
+        },
+        {
+          "line": 50,
+          "owner": "subject_management_dialog",
+          "call": "LABELS.items",
+          "service": "study_app.core.subject_management.LABELS.items"
+        },
+        {
+          "line": 122,
+          "owner": "subject_management_dialog.load_targets",
+          "call": "list_subjects",
+          "service": "study_app.core.subject_management.list_subjects"
+        },
+        {
+          "line": 153,
+          "owner": "subject_management_dialog.import_outline",
+          "call": "parse_outline",
+          "service": "study_app.core.subject_management.parse_outline"
+        },
+        {
+          "line": 164,
+          "owner": "subject_management_dialog.prepare",
+          "call": "prepare_management",
+          "service": "study_app.core.subject_management.prepare_management"
+        }
+      ]
+    },
+    {
+      "file": "study_app/ui/theme.py",
+      "page_factories": [],
+      "qt_classes": [],
+      "dialogs_and_menus": [],
+      "worker_and_submit_sites": [],
+      "direct_service_calls": []
+    },
+    {
+      "file": "study_app/ui/window_shell.py",
+      "page_factories": [
+        {
+          "line": 30,
+          "owner": "",
+          "call": "create_main_window"
+        },
+        {
+          "line": 385,
+          "owner": "_MainWindowType.build._MainWindow",
+          "call": "switch_page"
+        }
+      ],
+      "qt_classes": [
+        {
+          "line": 45,
+          "owner": "_MainWindowType.build",
+          "call": "WakeBridge",
+          "bases": [
+            "QObject"
+          ]
+        },
+        {
+          "line": 48,
+          "owner": "_MainWindowType.build",
+          "call": "_MainWindow",
+          "bases": [
+            "QMainWindow"
+          ]
+        },
+        {
+          "line": 650,
+          "owner": "_FloatingIconType.build",
+          "call": "_FloatingIcon",
+          "bases": [
+            "QWidget"
+          ]
+        }
+      ],
+      "dialogs_and_menus": [
+        {
+          "line": 556,
+          "owner": "_MainWindowType.build._MainWindow.setup_tray_icon",
+          "call": "QMenu",
+          "literal_arguments": []
+        },
+        {
+          "line": 699,
+          "owner": "_FloatingIconType.build._FloatingIcon.contextMenuEvent",
+          "call": "QMenu",
+          "literal_arguments": []
+        }
+      ],
+      "worker_and_submit_sites": [
+        {
+          "line": 403,
+          "owner": "_MainWindowType.build._MainWindow.request_dashboard_refresh",
+          "call": "AsyncTaskService",
+          "kind": "task call"
+        },
+        {
+          "line": 414,
+          "owner": "_MainWindowType.build._MainWindow.request_dashboard_refresh",
+          "call": "self._refresh_service.submit",
+          "kind": "task call"
+        }
+      ],
+      "direct_service_calls": [
+        {
+          "line": 196,
+          "owner": "_MainWindowType.build._MainWindow.build_ui",
+          "call": "load_llm_settings",
+          "service": "study_app.ai.providers.load_llm_settings"
+        },
+        {
+          "line": 201,
+          "owner": "_MainWindowType.build._MainWindow.build_ui.toggle_llm_mode",
+          "call": "load_llm_settings",
+          "service": "study_app.ai.providers.load_llm_settings"
+        },
+        {
+          "line": 202,
+          "owner": "_MainWindowType.build._MainWindow.build_ui.toggle_llm_mode",
+          "call": "save_llm_settings",
+          "service": "study_app.ai.providers.save_llm_settings"
+        },
+        {
+          "line": 202,
+          "owner": "_MainWindowType.build._MainWindow.build_ui.toggle_llm_mode",
+          "call": "LLMSettings",
+          "service": "study_app.ai.providers.LLMSettings"
+        },
+        {
+          "line": 377,
+          "owner": "_MainWindowType.build._MainWindow.clear_volatile_caches",
+          "call": "delete_settings_by_prefix",
+          "service": "study_app.data.database.delete_settings_by_prefix"
+        },
+        {
+          "line": 403,
+          "owner": "_MainWindowType.build._MainWindow.request_dashboard_refresh",
+          "call": "AsyncTaskService",
+          "service": "study_app.core.async_tasks.AsyncTaskService"
+        },
+        {
+          "line": 442,
+          "owner": "_MainWindowType.build._MainWindow.refresh_dashboard",
+          "call": "load_dashboard_state",
+          "service": "study_app.core.dashboard.load_dashboard_state"
+        },
+        {
+          "line": 447,
+          "owner": "_MainWindowType.build._MainWindow.refresh_subject_catalog",
+          "call": "load_dashboard_state",
+          "service": "study_app.core.dashboard.load_dashboard_state"
+        }
+      ]
+    }
+  ]
+}

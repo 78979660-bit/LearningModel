@@ -320,12 +320,12 @@ class StudyPlanServiceContractTests(unittest.TestCase):
             plan["evidence"],
             [
                 "local evidence",
-                "LLM 增强计划未通过校验，已显示本地计划。原因摘要：第一行 第二行",
+                "LLM 增强计划未通过本地校验（ValueError），已显示本地计划。",
             ],
         )
         self.assertEqual(
             status,
-            "已显示本地计划；LLM 增强未通过校验：第一行 第二行",
+            "已显示本地计划；LLM 增强未通过本地校验（ValueError）。",
         )
 
     def test_llm_unavailable_hint_exact_messages_and_exception_default(self) -> None:

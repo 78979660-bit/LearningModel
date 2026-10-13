@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 import socket
 import urllib.error
 import urllib.request
 from collections.abc import Collection
 
 from study_app.ai.providers import LLM_FEATURES, LLMSettings, estimate_tokens, load_llm_settings
+from study_app.data.db_runtime import DEFAULT_DB_PATH
 
 
 class LLMNotConfiguredError(RuntimeError):
@@ -161,7 +163,12 @@ def assert_can_call_llm(prompt: str, settings: LLMSettings | None = None) -> LLM
     return settings
 
 
-def parse_record_with_llm(payload: dict, *, settings: LLMSettings | None = None) -> dict:
+def parse_record_with_llm(
+    payload: dict,
+    *,
+    settings: LLMSettings | None = None,
+    db_path: str | Path = DEFAULT_DB_PATH,
+) -> dict:
     from study_app.ai.audit import audited_chat_completion_json, summarize_payload
 
     class AuditedPayload(dict):
@@ -169,11 +176,13 @@ def parse_record_with_llm(payload: dict, *, settings: LLMSettings | None = None)
 
     settings = settings or load_llm_settings()
     prompt = build_record_parse_prompt(payload, settings.enabled_features)
+    audit_kwargs = {} if Path(db_path) == Path(DEFAULT_DB_PATH) else {"db_path": db_path}
     content = audited_chat_completion_json(
         "record_parser",
         prompt,
         summarize_payload(payload),
         settings=settings,
+        **audit_kwargs,
     )
     result = AuditedPayload(json.loads(content))
     result.audit_id = content.audit_id
