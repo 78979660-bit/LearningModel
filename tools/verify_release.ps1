@@ -3,7 +3,7 @@
 param(
     [string]$DistDirectory = '',
     [string]$InstallerPath = '',
-    [string]$ExpectedVersion = '0.1.2',
+    [string]$ExpectedVersion = '1.0.0',
     [switch]$RunSelfTest,
     [switch]$PublicRelease,
     [switch]$UnsignedRelease,

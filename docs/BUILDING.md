@@ -3,7 +3,7 @@
 ## 环境
 
 - Windows x64，PowerShell 7。
-- CPython 3.14.5 x64（公开 v0.1.0 和 v0.1.1 安装包的构建版本）。
+- CPython 3.14.5 x64（1.0.0 发布构建使用此精确版本）。
 - `requirements-build.lock.txt` 中固定的依赖。
 - Inno Setup 7.1.0；安装器使用其 ChineseSimplified 语言文件。
 
@@ -30,14 +30,14 @@ pwsh -NoProfile -File tools/build_release.ps1
 | 产物 | 用途 |
 | --- | --- |
 | `dist/LearningModel/` | 完整程序目录，用于本地运行和打包 |
-| `release/artifacts/LearningModel-Setup-0.1.2-x64.exe` | 当前用户范围的 Windows 安装包 |
+| `release/artifacts/LearningModel-Setup-1.0.0-x64.exe` | 当前用户范围的 Windows 安装包 |
 | `release/artifacts/SHA256SUMS.txt` | 本次生成的安装包校验值 |
 | `release/artifacts/verification/` | 构建记录、依赖清单与打包检查材料 |
 
 核对安装包哈希：
 
 ```powershell
-Get-FileHash -LiteralPath .\release\artifacts\LearningModel-Setup-0.1.2-x64.exe -Algorithm SHA256
+Get-FileHash -LiteralPath .\release\artifacts\LearningModel-Setup-1.0.0-x64.exe -Algorithm SHA256
 ```
 
 与同一次构建生成的 `SHA256SUMS.txt` 比较。核对官网下载的安装包时，使用同一 Release 中的校验文件。
