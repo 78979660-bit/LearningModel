@@ -46,6 +46,8 @@
 
 具体的构建、补测范围和历史验收关系见 [1.0.0 发布说明](docs/RELEASE_ACCEPTANCE_1.0.0.md)；以往版本的更新见 [更新记录](release/更新记录.md)。
 
+主分支已同步 1.0.0 的 QML 源码，并保留已有维护修复。开发可使用 `main`；需要重现已发布安装包时，请使用 `v1.0.0` 标签。对应关系及本次验证见 [源码同步记录](docs/SOURCE_SYNC_1.0.0.md)。
+
 ## 下载与安装
 
 👉 [下载 Windows x64 安装包](https://github.com/78979660-bit/LearningModel/releases/download/v1.0.0/LearningModel-Setup-1.0.0-x64.exe)

@@ -47,6 +47,7 @@ def connect_readonly(db_path: Path | str = DEFAULT_DB_PATH) -> sqlite3.Connectio
             f"数据库尚未初始化：{path}；请先运行显式初始化流程"
         )
     uri = f"{path.resolve().as_uri()}?mode=ro"
+    connection = None
     try:
         connection = sqlite3.connect(uri, uri=True, factory=_ClosingConnection)
         connection.row_factory = sqlite3.Row
@@ -61,6 +62,8 @@ def connect_readonly(db_path: Path | str = DEFAULT_DB_PATH) -> sqlite3.Connectio
             )
         return connection
     except sqlite3.Error as error:
+        if connection is not None:
+            connection.close()
         raise DatabaseNotInitializedError(
             f"无法只读打开数据库 {path}；请先运行显式初始化流程"
         ) from error
