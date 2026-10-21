@@ -82,7 +82,7 @@ datas = [
 
 # QML resources remain an explicit allowlist, shared with startup validation.
 # QtQml's PyInstaller hook collects Qt import plugins; Qt Quick imports below
-# ensure those hooks run even while the default launcher remains Widgets.
+# ensure those hooks run for the default QML launcher and its explicit imports.
 qml_resources = runpy.run_path(str(project_root / "study_app/quick/resources.py"))
 for relative in qml_resources["QML_RESOURCE_FILES"]:
     destination = "study_app/quick/qml/" + str(Path(relative).parent).replace("\\", "/")
