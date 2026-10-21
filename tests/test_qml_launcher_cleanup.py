@@ -1,13 +1,63 @@
-"""Direct self-test profiles must be removable on Windows, even on failure."""
+"""Launcher routing and removable direct self-test profiles on Windows."""
 
 from __future__ import annotations
 
 import os
 from pathlib import Path
+import runpy
 import subprocess
 import sys
+from types import ModuleType
+from unittest.mock import Mock
 
 import pytest
+
+
+@pytest.mark.parametrize("arguments, expected", [([], "qml"), (["--qml"], "qml"), (["--widgets"], "widgets")])
+def test_launcher_defaults_to_qml_and_keeps_explicit_widget_comparison(monkeypatch, arguments, expected):
+    launcher = Path(__file__).resolve().parents[1] / "run_study_app.pyw"
+    namespace = runpy.run_path(str(launcher), run_name="launcher_routing_test")
+    main = namespace["_main"]
+    monkeypatch.setitem(main.__globals__, "_configure_runtime", lambda: None)
+    qml = ModuleType("study_app.quick.runtime")
+    widgets = ModuleType("study_app.ui.app_runtime")
+    qml.run_app = Mock(return_value=7)
+    widgets.run_app = Mock()
+    monkeypatch.setitem(sys.modules, qml.__name__, qml)
+    monkeypatch.setitem(sys.modules, widgets.__name__, widgets)
+    monkeypatch.setattr(sys, "argv", [str(launcher), *arguments])
+    if expected == "qml":
+        with pytest.raises(SystemExit) as result:
+            main()
+        assert result.value.code == 7
+        qml.run_app.assert_called_once_with()
+        widgets.run_app.assert_not_called()
+    else:
+        main()
+        widgets.run_app.assert_called_once_with()
+        qml.run_app.assert_not_called()
+
+
+@pytest.mark.parametrize("arguments", [[], ["--qml"], ["--widgets"]])
+def test_self_test_takes_priority_over_window_selection(monkeypatch, tmp_path, arguments):
+    launcher = Path(__file__).resolve().parents[1] / "run_study_app.pyw"
+    namespace = runpy.run_path(str(launcher), run_name="launcher_probe_test")
+    main = namespace["_main"]
+    monkeypatch.setitem(main.__globals__, "_configure_runtime", lambda: None)
+    probe = Mock()
+    monkeypatch.setitem(main.__globals__, "_run_self_test", probe)
+    qml = ModuleType("study_app.quick.runtime")
+    widgets = ModuleType("study_app.ui.app_runtime")
+    qml.run_app = Mock()
+    widgets.run_app = Mock()
+    monkeypatch.setitem(sys.modules, qml.__name__, qml)
+    monkeypatch.setitem(sys.modules, widgets.__name__, widgets)
+    destination = tmp_path / "probe.json"
+    monkeypatch.setattr(sys, "argv", [str(launcher), *arguments, "--self-test", str(destination)])
+    main()
+    probe.assert_called_once_with(destination.resolve())
+    qml.run_app.assert_not_called()
+    widgets.run_app.assert_not_called()
 
 
 @pytest.mark.parametrize("fail", [False, True], ids=["success", "failure"])

@@ -80,8 +80,10 @@ cd LearningModel
 git checkout v1.0.0
 py -3.14 -m venv .venv-build
 & .\.venv-build\Scripts\python.exe -m pip install -r requirements-build.lock.txt
-& .\.venv-build\Scripts\python.exe run_study_app.pyw
+& .\.venv-build\Scripts\python.exe run_study_app.pyw --qml
 ```
+
+这条命令与安装包快捷方式一样进入 QML 界面。`main` 也已将 QML 设为无参数启动时的默认界面；上面的历史 `v1.0.0` 标签仍需显式添加 `--qml`。在 `main` 中如需运行旧 QWidget 界面作对照，可使用 `run_study_app.pyw --widgets`。
 
 运行测试：
 

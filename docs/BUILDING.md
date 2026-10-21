@@ -70,7 +70,7 @@ Get-FileHash -LiteralPath .\release\artifacts\LearningModel-Setup-1.0.0-x64.exe 
 
 该脚本核对锁定依赖，正式运行环境还拒绝额外依赖。它使用原 spec 的显式资源清单，执行冻结程序隔离自检与发行目录检查。`metadata/environment.json` 保存 Python/Qt/依赖；`source-inputs.json` 保存受限源码、QML 及资源的逐文件 SHA-256；`dist-inputs.json` 保存冻结目录全部文件哈希；`run-record.json` 保存构建脚本、版本资源、spec、安装器配置、lock、verifier 及清单哈希和最终状态。构建结束重新检查源码与构建输入，发生变化会拒绝通过，必须用新 RunName 重建。哈希和环境记录用于追溯，不构成逐字节可重复构建证明。
 
-当前 0.1.2 候选的安装快捷方式使用 `LearningModel.exe --qml` 选择完整 QML 窗口；直接运行无参数程序仍保留 Widgets 对照。候选包没有替代公开 v0.1.1；各历史阶段的验证范围见 [阶段五记录](QML_PHASE5_ACCEPTANCE.md)，本次结果须以 0.1.2 验收记录为准。
+`main` 的源码入口和以后从该入口构建的程序，无参数启动时默认进入完整 QML 窗口；`--qml` 继续兼容安装包快捷方式，需要旧 QWidget 对照界面时使用 `--widgets`。历史 `v1.0.0` 标签及已发布程序仍保留原有参数行为，其快捷方式通过 `LearningModel.exe --qml` 进入 QML；复现历史版本时请保留此参数。各历史阶段的验证范围见 [阶段五记录](QML_PHASE5_ACCEPTANCE.md)及对应版本的验收记录。
 
 发布前收尾新增内部安装器准备工具，要求上一步是通过的正式运行环境构建。它在该运行目录的全新 `installer` 子目录输出候选包，不覆盖旧 dist 或 release/artifacts。安装前状态检查可使用 `-PreflightOnly`；此选项仅检查输入，不生成安装器。
 

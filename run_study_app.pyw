@@ -153,7 +153,7 @@ def _main() -> None:
             _run_self_test(self_test)
             return
 
-        if "--qml" in sys.argv[1:]:
+        if "--widgets" not in sys.argv[1:]:
             from study_app.quick.runtime import run_app
 
             raise SystemExit(run_app())
