@@ -1,14 +1,17 @@
 from __future__ import annotations
 
 import json
+import inspect
 import logging
 import math
 import re
+from pathlib import Path
 from typing import Any
 
 from study_app.ai.llm_client import assert_can_call_llm, chat_completion_json
 from study_app.ai.providers import LLMSettings, estimate_tokens, load_llm_settings
 from study_app.data.database import record_llm_call_audit, update_llm_call_audit
+from study_app.data.db_runtime import DEFAULT_DB_PATH
 
 
 LOGGER = logging.getLogger(__name__)
@@ -131,22 +134,30 @@ class AuditedJSON(str):
         return instance
 
 
-def _record_audit_required(**fields: Any) -> int:
+def _record_audit_required(db_path: str | Path = DEFAULT_DB_PATH, **fields: Any) -> int:
     try:
         fields["upload_summary"] = _sanitize_upload_summary(fields.get("upload_summary"))
-        return int(record_llm_call_audit(**fields))
+        if Path(db_path) == Path(DEFAULT_DB_PATH):
+            return int(record_llm_call_audit(**fields))
+        return int(record_llm_call_audit(db_path=db_path, **fields))
     except Exception as error:
         LOGGER.error("Failed to persist required LLM call audit (%s)", type(error).__name__)
         raise AuditPersistenceError("LLM 审计写入失败，业务结果已阻止。") from error
 
 
-def _update_audit_required(audit_id: int, status: str, error: Exception | None = None) -> None:
+def _update_audit_required(
+    audit_id: int,
+    status: str,
+    error: Exception | None = None,
+    *,
+    db_path: str | Path = DEFAULT_DB_PATH,
+) -> None:
     try:
-        update_llm_call_audit(
-            audit_id,
-            status,
-            type(error).__name__ if error is not None else None,
-        )
+        arguments = (audit_id, status, type(error).__name__ if error is not None else None)
+        if Path(db_path) == Path(DEFAULT_DB_PATH):
+            update_llm_call_audit(*arguments)
+        else:
+            update_llm_call_audit(*arguments, db_path=db_path)
     except Exception as audit_error:
         LOGGER.error("Failed to update required LLM call audit (%s)", type(audit_error).__name__)
         raise AuditPersistenceError("LLM 审计更新失败，业务结果已阻止。") from audit_error
@@ -157,22 +168,48 @@ def audit_id_of(value: object) -> int | None:
     return int(audit_id) if isinstance(audit_id, int) else None
 
 
-def mark_audit_validation_failed(value: object, error: Exception) -> None:
+def _mark_audit_update(
+    audit_id: int,
+    status: str,
+    error: Exception | None = None,
+    *,
+    db_path: str | Path = DEFAULT_DB_PATH,
+) -> None:
+    updater = _update_audit_required
+    try:
+        parameters = inspect.signature(updater).parameters.values()
+        supports_path = any(
+            item.name == "db_path" or item.kind == inspect.Parameter.VAR_KEYWORD
+            for item in parameters
+        )
+    except (TypeError, ValueError):
+        supports_path = True
+    if supports_path:
+        updater(audit_id, status, error, db_path=db_path)
+    else:
+        # Keep compatibility with older injected test/host callbacks that only
+        # accept the original positional audit lifecycle arguments.
+        updater(audit_id, status, error)
+
+
+def mark_audit_validation_failed(
+    value: object, error: Exception, *, db_path: str | Path = DEFAULT_DB_PATH
+) -> None:
     audit_id = audit_id_of(value)
     if audit_id is not None:
-        _update_audit_required(audit_id, "validation_failed", error)
+        _mark_audit_update(audit_id, "validation_failed", error, db_path=db_path)
 
 
-def mark_audit_validated(value: object) -> None:
+def mark_audit_validated(value: object, *, db_path: str | Path = DEFAULT_DB_PATH) -> None:
     audit_id = audit_id_of(value)
     if audit_id is not None:
-        _update_audit_required(audit_id, "validated_not_adopted")
+        _mark_audit_update(audit_id, "validated_not_adopted", db_path=db_path)
 
 
-def mark_audit_adopted(value: object) -> None:
+def mark_audit_adopted(value: object, *, db_path: str | Path = DEFAULT_DB_PATH) -> None:
     audit_id = audit_id_of(value)
     if audit_id is not None:
-        _update_audit_required(audit_id, "adopted")
+        _mark_audit_update(audit_id, "adopted", db_path=db_path)
 
 
 def audited_chat_completion_json(
@@ -182,16 +219,23 @@ def audited_chat_completion_json(
     timeout_seconds: int | None = None,
     parent_audit_id: int | None = None,
     settings: LLMSettings | None = None,
+    db_path: str | Path = DEFAULT_DB_PATH,
 ) -> AuditedJSON:
     """Call an LLM and persist a compact audit record.
 
     The audit deliberately stores only metadata and upload summaries, not the
     prompt body or model response.
     """
-    settings = settings or load_llm_settings()
+    settings = settings or (
+        load_llm_settings()
+        if Path(db_path) == Path(DEFAULT_DB_PATH)
+        else load_llm_settings(db_path=db_path)
+    )
     token_estimate = estimate_tokens(prompt)
     summary = upload_summary or {}
+    audit_kwargs = {"db_path": db_path} if Path(db_path) != Path(DEFAULT_DB_PATH) else {}
     audit_id = _record_audit_required(
+        **audit_kwargs,
         feature=feature,
         provider=settings.provider,
         model=settings.model,
@@ -205,10 +249,10 @@ def audited_chat_completion_json(
         content = chat_completion_json(prompt, settings, timeout_seconds=timeout_seconds)
     except Exception as error:
         status = "parse_failed" if isinstance(error, json.JSONDecodeError) else "transport_failed"
-        _update_audit_required(audit_id, status, error)
+        _mark_audit_update(audit_id, status, error, db_path=db_path)
         raise
 
-    _update_audit_required(audit_id, "parsed_unvalidated")
+    _mark_audit_update(audit_id, "parsed_unvalidated", db_path=db_path)
     return AuditedJSON(content, audit_id)
 
 

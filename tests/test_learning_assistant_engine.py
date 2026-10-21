@@ -490,3 +490,28 @@ def test_nl_revise_end_to_end_marks_problem_wrong_and_keeps_attachments(env):
         float(item["mastery_after"]) < float(item["mastery_before"])
         for item in revise_receipt.mastery_changes
     )
+
+
+def test_journal_reads_use_one_connection_and_preserve_order(env, monkeypatch):
+    from study_app.core.learning_assistant_engine import JOURNAL_INDEX_KEY, ACTION_KEY_PREFIX
+    entries = [
+        {"action_id": "a", "state": "completed", "proposal": {"action_type": "record_progress"},
+         "receipt": {"message": "first", "undo_token": {"kind": "record", "record_id": 1}}},
+        {"action_id": "b", "state": "completed", "proposal": {"action_type": "record_progress"},
+         "receipt": {"message": "second", "undo_token": {"kind": "record", "record_id": 2}}},
+        {"action_id": "c", "state": "rejected", "receipt": {}},
+    ]
+    database.set_setting(JOURNAL_INDEX_KEY, ['a', 'missing', 'invalid', 'b', 'c'], env.db_path)
+    for entry in entries:
+        database.set_setting(ACTION_KEY_PREFIX + entry['action_id'], entry, env.db_path)
+    database.set_setting(ACTION_KEY_PREFIX + 'invalid', ['not an entry'], env.db_path)
+    original = database.connect_readonly
+    calls = []
+    def counted(*args, **kwargs):
+        calls.append(1)
+        return original(*args, **kwargs)
+    monkeypatch.setattr(database, 'connect_readonly', counted)
+    assert [row['action_id'] for row in env.engine.load_journal()] == ['a', 'b', 'c']
+    assert len(calls) == 1
+    assert env.engine.last_undoable()['action_id'] == 'b'
+    assert len(calls) == 2

@@ -1,8 +1,9 @@
 """Collect license texts from the exact distributions used by a release build.
 
 The output is evidence for release review, not a legal conclusion. In
-particular, collecting PyMuPDF's license does not resolve the project's public
-redistribution blocker.
+particular, collecting PyMuPDF's license does not verify a candidate's
+corresponding source or redistribution materials. See docs/OPEN_SOURCE.md for
+the project's license decision.
 """
 
 from __future__ import annotations

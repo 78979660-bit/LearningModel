@@ -17,6 +17,7 @@ from study_app.data.database import (
 )
 from study_app.core.ds_course_taxonomy import TEMPLATE_INFO
 from study_app.core.discrete_math_taxonomy import DISCRETE_TEMPLATE_INFO
+from study_app.core.probability_statistics_taxonomy import PROBABILITY_TEMPLATE_INFO
 
 
 TEMPLATE_SUBJECT_HINTS = {
@@ -68,6 +69,9 @@ TEMPLATE_SUBJECT_HINTS.update(
         for template_id, (module, _description) in DISCRETE_TEMPLATE_INFO.items()
     }
 )
+
+
+TEMPLATE_SUBJECT_HINTS.update({key: ("概率论与数理统计", name) for key, (name, _description) in PROBABILITY_TEMPLATE_INFO.items()})
 
 
 from study_app.core.composite_templates import COMPOSITE_TEMPLATES

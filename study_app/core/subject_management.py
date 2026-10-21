@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import math
 import sqlite3
 import uuid
 from pathlib import Path
@@ -49,6 +50,24 @@ def parse_outline(text):
     return [{'name': name, 'topics': topics} for name, topics in modules.items()]
 
 
+def _impact_snapshot(value):
+    """Represent SQLite REAL values exactly for the strict approval hash.
+
+    Change-set payloads still forbid floats. Related record/plan rows contain
+    REAL columns; tagging their exact binary value avoids rounding away a data
+    change or weakening the canonicalizer used by approval capabilities.
+    """
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            raise ValueError('关联数据含无效数值，请先检查数据库')
+        return {'sqlite-real-v1': value.hex()}
+    if isinstance(value, dict):
+        return {key: _impact_snapshot(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_impact_snapshot(item) for item in value]
+    return value
+
+
 def _impact(connection, key):
     aliases = [row[0] for row in connection.execute(
         'SELECT alias FROM subject_aliases WHERE subject_key=? ORDER BY alias', (key,))]
@@ -67,7 +86,7 @@ def _impact(connection, key):
             'SELECT * FROM study_plan_items WHERE plan_id=? ORDER BY id', (plan['id'],)))
     return {'records': len(records), 'plan_ids': [row['id'] for row in plans],
             'plan_scopes': [row['subject_scope'] for row in plans],
-            'fingerprint': canonical_hash({'records': records, 'plans': plans, 'items': items})}
+            'fingerprint': canonical_hash(_impact_snapshot({'records': records, 'plans': plans, 'items': items}))}
 
 
 def prepare_management(db_path, kind, *, name='', outline='', subject_key=None):

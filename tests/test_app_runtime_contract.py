@@ -93,8 +93,6 @@ class AppRuntimeContractTests(unittest.TestCase):
         from study_app.ui import app_runtime
 
         core, widgets, application, policy = self.fake_qt_modules()
-        cleanup_module = ModuleType("study_app.integrations.chatgpt_desktop_bridge")
-        cleanup_module.cleanup_generated_pdfs = Mock()
         window = SimpleNamespace(request_restore=Mock(), show=Mock())
         wake_server = SimpleNamespace(start=Mock(return_value=True), stop=Mock())
         wake_factory = Mock(return_value=wake_server)
@@ -117,7 +115,6 @@ class AppRuntimeContractTests(unittest.TestCase):
                 {
                     "PySide6.QtCore": core,
                     "PySide6.QtWidgets": widgets,
-                    "study_app.integrations.chatgpt_desktop_bridge": cleanup_module,
                 },
             ),
             patch.object(sys, "argv", argv),
@@ -154,7 +151,6 @@ class AppRuntimeContractTests(unittest.TestCase):
         self.assertEqual(app.stylesheet, "QSS")
         self.assertIs(app.translator.parent, app)
         self.assertEqual(app.translator.translate("QPlatformTheme", "Cancel"), "取消")
-        cleanup_module.cleanup_generated_pdfs.assert_called_once_with()
         window_factory.assert_called_once_with("STATE")
         self.assertIs(window._weekly_collection_thread, weekly_worker)
         weekly_factory.assert_called_once_with()

@@ -92,10 +92,12 @@ def record_mentions_topic(record, subject_name, topic_name):
     return topic_name and topic_matches_text(topic_name, text)
 
 
+_LEARNING_TEXT_DROP_TABLE = dict.fromkeys(map(ord, set(" \t\r\n\u3000·/／、,，;；:：-—_()（）[]【】")))
+
+
 def normalize_topic_text(value):
     text = _flatten_text(value).lower()
-    drop_chars = set(" \t\r\n\u3000·/／、,，;；:：-—_()（）[]【】")
-    return "".join(ch for ch in text if ch not in drop_chars)
+    return text.translate(_LEARNING_TEXT_DROP_TABLE)
 
 
 def topic_matches_text(topic_name, text):

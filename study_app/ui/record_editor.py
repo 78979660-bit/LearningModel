@@ -45,7 +45,6 @@ class _RecordEditorType:
     def build():
         from datetime import date
         from pathlib import Path
-        import re
 
         from PySide6.QtCore import QDate, QTimer, Qt
         from PySide6.QtWidgets import (
@@ -68,6 +67,7 @@ class _RecordEditorType:
         from study_app.data.file_locator import locate_files
         from study_app.data.text_extractor import combined_extracted_text, extract_text_from_files
         from study_app.ai.attachment_parser import parse_problem_blocks_from_text
+        from study_app.core import record_draft_inference
 
         class NoWheelComboBox(QComboBox):
             def wheelEvent(self, event):
@@ -506,155 +506,53 @@ class _RecordEditorType:
                 answer_result = self.problem_result_input.toPlainText().strip()
                 error_cause = self.problem_error_cause_input.toPlainText().strip()
                 note = self.note_input.toPlainText().strip()
-                manual_context = "\n".join([note, answer_result, error_cause, *self.attachments])
-                context = "\n".join([manual_context, self.extracted_context])
-                titles = self.extract_problem_titles(manual_context)
-                if not titles:
-                    titles = [block.title for block in self.attachment_problem_blocks[:30]]
-                if not titles:
-                    titles = self.extract_problem_titles(self.extracted_context)
-                if not titles and (answer_result or error_cause):
-                    titles = [self.topic_input.text().strip() or self.attachment_based_title() or "识别题目"]
-                wrong_titles = self.extract_wrong_titles(context)
-                error_by_title = self.extract_error_causes_by_title(error_cause)
-                statement_by_title = {
-                    block.title: block.statement
-                    for block in self.attachment_problem_blocks
-                }
-                problems = []
-                for title in titles:
-                    problem_error = error_by_title.get(title, error_cause if title in wrong_titles else "")
-                    statement = statement_by_title.get(title) or self.inferred_statement_for(title, context)
-                    problem = {
-                        "title": title,
-                        "statement": statement,
-                        "statement_source": "attachment_excerpt" if title in statement_by_title or "附件题面摘录" in statement else "generated_summary",
-                        "answer_result": self.answer_result_for(title, answer_result, wrong_titles, len(titles)),
-                        "error_cause": problem_error,
-                        "error_category": self.classify_error_category(problem_error),
-                        "related_topics": [self.topic_input.text().strip()] if self.topic_input.text().strip() else [],
-                        "parser_source": "local_rule",
-                        "attachment_sources": [Path(path).name for path in self.attachments],
-                    }
-                    self.infer_problem_fields(problem)
-                    problems.append(problem)
-                return problems
+                return record_draft_inference.infer_problems_from_inputs(
+                    note=note,
+                    answer_result=answer_result,
+                    error_cause=error_cause,
+                    topic=self.topic_input.text().strip(),
+                    module=self.module_input.currentText().strip(),
+                    attachments=self.attachments,
+                    extracted_text=self.extracted_context,
+                    problem_blocks=self.attachment_problem_blocks,
+                    record_context={
+                        "subject": self.subject_input.currentText().strip(),
+                        "module": self.module_input.currentText().strip(),
+                        "topic": self.topic_input.text().strip(),
+                        "note": note,
+                    },
+                )
 
             def extract_problem_titles(self, text):
-                titles = []
-                for start, end in re.findall(r"(?:第)?(\d+)\s*(?:到|-|~|至)\s*(\d+)\s*题", text):
-                    a, b = int(start), int(end)
-                    if 0 < a <= b and b - a <= 80:
-                        titles.extend([f"第{number}题" for number in range(a, b + 1)])
-                for end in re.findall(r"前\s*(\d+)\s*题", text):
-                    count = min(int(end), 80)
-                    titles.extend([f"第{number}题" for number in range(1, count + 1)])
-                for number in re.findall(r"(?:第|例)\s*(\d+(?:\.\d+)*)\s*题?", text):
-                    title = f"第{number}题" if "." not in number else f"例{number}"
-                    if title not in titles:
-                        titles.append(title)
-                if not titles:
-                    match = re.search(r"(?:做了|完成了|练了)\s*(\d+)\s*题", text)
-                    if match:
-                        count = min(int(match.group(1)), 50)
-                        titles.extend([f"第{number}题" for number in range(1, count + 1)])
-                if not titles:
-                    for number in re.findall(r"(?:^|\n)\s*((?:\d+\.)?\d+)\s+.{6,}", text):
-                        title = f"第{number}题"
-                        if title not in titles:
-                            titles.append(title)
-                        if len(titles) >= 30:
-                            break
-                return list(dict.fromkeys(titles))
+                return record_draft_inference.extract_problem_titles(text)
 
             def extract_wrong_titles(self, text):
-                wrong = set()
-                for group in re.findall(r"错(?:了|误)?\s*(?:第)?([\d一二三四五六七八九十两、，,\s和]+)\s*题", text):
-                    for token in re.findall(r"\d+|[一二三四五六七八九十两]+", group):
-                        number = self.parse_problem_number(token)
-                        if number is not None:
-                            wrong.add(f"第{number}题")
-                for token in re.findall(r"(?:错(?:因|在)?|错误在|没掌握|不会|算错)\s*(?:第)?(\d+|[一二三四五六七八九十两]+)\s*题", text):
-                    number = self.parse_problem_number(token)
-                    if number is not None:
-                        wrong.add(f"第{number}题")
-                return wrong
+                return record_draft_inference.extract_wrong_titles(text)
 
             def extract_error_causes_by_title(self, text):
-                result = {}
-                pattern = r"(?:第)?(\d+|[一二三四五六七八九十两]+)\s*题?(?:错因(?:是|为)?|因为|因|错在)([^。；;\n]+)"
-                for raw_number, reason in re.findall(pattern, text):
-                    number = self.parse_problem_number(raw_number)
-                    if number is not None:
-                        result[f"第{number}题"] = reason.strip(" ：:，,")
-                return result
+                return record_draft_inference.extract_error_causes_by_title(text)
 
             def classify_error_category(self, text):
-                value = (text or "").strip()
-                if not value:
-                    return "none"
-                rules = [
-                    ("boundary_omission", ["边界", "端点", "零点", "特殊情况", "特殊点", "奇点", "范围", "定义域"]),
-                    ("condition_misjudgment", ["条件", "适用", "方向", "取向", "补面", "符号", "判断错误"]),
-                    ("calculation_error", ["计算", "算错", "代入", "化简", "积分算错", "面积算错", "通量计算"]),
-                    ("method_gap", ["不会", "没有掌握", "不熟", "忘记方法", "势函数", "公式遗忘"]),
-                    ("modeling_error", ["建模", "列式", "区域设置", "变量", "换元", "坐标"]),
-                    ("concept_forgetting", ["概念", "定义", "遗忘", "忘了", "记错"]),
-                    ("time_management", ["时间", "来不及", "粗心", "审题太快"]),
-                ]
-                for category, keywords in rules:
-                    if any(keyword in value for keyword in keywords):
-                        return category
-                return "condition_misjudgment"
+                return record_draft_inference.classify_error_category(text)
 
             def parse_problem_number(self, value):
-                value = str(value).strip()
-                if value.isdigit():
-                    return int(value)
-                digits = {"一": 1, "二": 2, "两": 2, "三": 3, "四": 4, "五": 5, "六": 6, "七": 7, "八": 8, "九": 9}
-                if value == "十":
-                    return 10
-                if value.startswith("十"):
-                    return 10 + digits.get(value[1:], 0)
-                if "十" in value:
-                    left, right = value.split("十", 1)
-                    return digits.get(left, 0) * 10 + digits.get(right, 0)
-                return digits.get(value)
+                return record_draft_inference.parse_problem_number(value)
 
             def attachment_based_title(self):
-                if not self.attachments:
-                    return ""
-                return Path(self.attachments[0]).stem
+                return record_draft_inference.attachment_based_title(self.attachments)
 
             def inferred_statement_for(self, title, context):
-                snippet = self.extract_statement_snippet(title, self.extracted_context)
-                pieces = [
-                    f"系统从做题描述中识别：{title}",
-                    f"主题：{self.topic_input.text().strip()}" if self.topic_input.text().strip() else "",
-                    f"模块：{self.module_input.currentText().strip()}" if self.module_input.currentText().strip() else "",
-                    "附件：" + "；".join(Path(path).name for path in self.attachments) if self.attachments else "",
-                    f"附件题面摘录：{snippet}" if snippet else "",
-                    context[:500],
-                ]
-                return "\n".join(piece for piece in pieces if piece)
+                return record_draft_inference.inferred_statement_for(
+                    title,
+                    context,
+                    extracted_text=self.extracted_context,
+                    topic=self.topic_input.text().strip(),
+                    module=self.module_input.currentText().strip(),
+                    attachments=self.attachments,
+                )
 
             def extract_statement_snippet(self, title, text):
-                if not text:
-                    return ""
-                numbers = re.findall(r"\d+(?:\.\d+)*", title)
-                if not numbers:
-                    return ""
-                number = numbers[0]
-                patterns = [
-                    rf"(?:第\s*)?{re.escape(number)}\s*题?[^\n]*(?:\n[^\n]*){{0,3}}",
-                    rf"(?m)^\s*{re.escape(number)}\s+[^\n]*(?:\n[^\n]*){{0,3}}",
-                    rf"例\s*{re.escape(number)}[^\n]*(?:\n[^\n]*){{0,3}}",
-                ]
-                for pattern in patterns:
-                    match = re.search(pattern, text)
-                    if match:
-                        return match.group(0).strip()[:1000]
-                return ""
+                return record_draft_inference.extract_statement_snippet(title, text)
 
             def extract_attachment_context(self):
                 if not self.attachments:
@@ -678,13 +576,9 @@ class _RecordEditorType:
                     self.extraction_status.setText("附件中未提取到可用文本。")
 
             def answer_result_for(self, title, answer_result, wrong_titles, total_count):
-                if title in wrong_titles:
-                    return "错误"
-                if "全对" in answer_result or "其余都对" in answer_result or "其余全对" in answer_result:
-                    return "全对"
-                if total_count == 1:
-                    return answer_result
-                return "全对"
+                return record_draft_inference.answer_result_for(
+                    title, answer_result, wrong_titles, total_count
+                )
 
             def _problem_display_text(self, problem):
                 from learning_problem_result import interpret_problem_result
@@ -772,92 +666,23 @@ class _RecordEditorType:
                 return "部分正确，会按正确率和难度折算。"
 
             def estimate_record_score_from_problems(self):
-                if not self.problems:
-                    return None
-                try:
-                    from learning_monitor import load_json, record_score
-
-                    model = load_json(MODEL_PATH)
-                    policy = model.get("warning_policy", {})
-                except Exception:
-                    policy = {}
-                    try:
-                        from learning_monitor import record_score
-                    except Exception:
-                        return None
                 record = {
                     "subject": self.subject_input.currentText().strip(),
                     "module": self.module_input.currentText().strip(),
                     "topic": self.topic_input.text().strip(),
                     "note": self.note_input.toPlainText().strip(),
-                    "problems": list(self.problems),
                 }
-                def fallback_problem_weighted_score():
-                    from learning_problem_result import interpret_problem_result
-
-                    scores = []
-                    weights = []
-                    for problem in self.problems:
-                        interpretation = interpret_problem_result(problem)
-                        correctness = interpretation["value"]
-                        if correctness is None:
-                            continue
-                        difficulty = problem.get("difficulty_score")
-                        difficulty = float(difficulty) if isinstance(difficulty, (int, float)) else 55.0
-                        ratio = max(0.0, min(1.0, difficulty / 100))
-                        correct_score = 58 + (100 - 58) * (ratio ** 1.15)
-                        wrong_score = 8 + (58 - 8) * (ratio ** 1.25)
-                        score = wrong_score + (correct_score - wrong_score) * correctness
-                        weight = 0.65 + 0.85 * ratio
-                        scores.append(score)
-                        weights.append(weight)
-                    if not scores:
-                        return None
-                    return sum(score * weight for score, weight in zip(scores, weights)) / sum(weights)
-
-                score = record_score(record, policy)
-                if score is None:
-                    score = fallback_problem_weighted_score()
-                if score is None:
-                    return None
-                return max(0.0, min(100.0, float(score)))
+                return record_draft_inference.estimate_record_score_from_problems(
+                    self.problems, record, MODEL_PATH
+                )
             def infer_problem_fields(self, problem):
-                from study_app.data.database import _infer_correctness_from_text
-                try:
-                    from learning_difficulty import infer_problem_difficulty
-                except Exception:
-                    infer_problem_difficulty = None
-
-                correctness = _infer_correctness_from_text(problem)
-                if correctness is not None:
-                    problem["correctness"] = correctness * 100
-                    problem["partial_credit"] = correctness
-                    if correctness >= 0.995:
-                        problem["status"] = "correct"
-                    elif correctness <= 0.005:
-                        problem["status"] = "wrong"
-                    else:
-                        problem["status"] = "partial"
-
-                if infer_problem_difficulty is not None:
-                    if (
-                        problem.get("difficulty_source") == "llm"
-                        and problem.get("difficulty_score") is not None
-                    ):
-                        return
-                    record = {
-                        "subject": self.subject_input.currentText().strip(),
-                        "module": self.module_input.currentText().strip(),
-                        "topic": self.topic_input.text().strip(),
-                        "note": self.note_input.toPlainText().strip(),
-                    }
-                    inferred = infer_problem_difficulty(record, problem)
-                    problem["difficulty"] = inferred.get("difficulty")
-                    problem["difficulty_score"] = inferred.get("difficulty_score")
-                    problem["difficulty_source"] = inferred.get("source")
-                    problem["difficulty_confidence"] = inferred.get("confidence")
-                    if inferred.get("reasons"):
-                        problem["difficulty_reasons"] = inferred["reasons"]
+                context = {
+                    "subject": self.subject_input.currentText().strip(),
+                    "module": self.module_input.currentText().strip(),
+                    "topic": self.topic_input.text().strip(),
+                    "note": self.note_input.toPlainText().strip(),
+                }
+                problem.update(record_draft_inference.infer_problem_fields(problem, context))
 
             def has_pending_problem(self):
                 return bool(

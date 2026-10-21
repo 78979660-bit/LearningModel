@@ -69,62 +69,6 @@ class StudyPlanPageContractTests(unittest.TestCase):
         page = study_plan_page.study_plan_page(state)
         return stack, page, create_plan, warning
 
-    def pdf_page(self, generator):
-        from study_app.ui import study_plan_page
-
-        state = self.state()
-        line = "当天作业：完成概率论作业，参考难度 72/100"
-        saved = {
-            "id": 9,
-            "created_at": "2026-07-18 10:00:00",
-            "plan": {
-                "judgement": [],
-                "goals": [],
-                "short": [line],
-                "diagnostic": [],
-                "record_template": [],
-                "expected": [],
-                "evidence": [],
-            },
-            "items": [
-                {
-                    "id": 23,
-                    "section_key": "short",
-                    "item_type": "result",
-                    "item_text": line,
-                    "checked": False,
-                    "result": None,
-                }
-            ],
-        }
-        phase = ModuleType("study_app.core.study_phase")
-        phase.is_final_review = Mock(return_value=False)
-        phase.exam_scope_label = Mock(return_value="")
-        stack = ExitStack()
-        stack.enter_context(patch.dict(sys.modules, {"study_app.core.study_phase": phase}))
-        stack.enter_context(
-            patch.object(
-                study_plan_page,
-                "plan_subject_scope_options",
-                return_value=(("测试占位学科", "测试占位学科"),),
-            )
-        )
-        stack.enter_context(patch.object(study_plan_page, "get_active_study_plan", return_value=saved))
-        stack.enter_context(patch.object(study_plan_page, "load_dashboard_state", return_value=state))
-        stack.enter_context(patch.object(study_plan_page, "final_review_subject_names", return_value=()))
-        stack.enter_context(patch.object(study_plan_page, "should_refresh_plan_for_model", return_value=False))
-        stack.enter_context(patch.object(study_plan_page, "plan_day_feedback_details", return_value=[]))
-        stack.enter_context(patch.object(study_plan_page, "build_practice_generation_prompt", return_value="test prompt"))
-        stack.enter_context(
-            patch(
-                "study_app.integrations.chatgpt_desktop_bridge.generate_pdf_with_chatgpt",
-                side_effect=generator,
-            )
-        )
-        warning = stack.enter_context(patch("PySide6.QtWidgets.QMessageBox.warning"))
-        information = stack.enter_context(patch("PySide6.QtWidgets.QMessageBox.information"))
-        page = study_plan_page.study_plan_page(state)
-        return stack, page, warning, information
 
     def wait_for_plan_worker(self, content, worker, timeout: float = 2.0) -> None:
         from study_app.ui.study_plan_page import _PLAN_GENERATION_WORKERS
@@ -146,8 +90,10 @@ class StudyPlanPageContractTests(unittest.TestCase):
         buttons = {
             button.text(): button for button in content.findChildren(QPushButton)
         }
-        for text in ("生成今日计划", "期末复习模式", "生成模拟卷 PDF"):
+        for text in ("生成今日计划", "期末复习模式"):
             self.assertTrue(buttons[text].isEnabled(), text)
+        self.assertNotIn("生成模拟卷 PDF", buttons)
+        self.assertNotIn("停止 PDF 生成", buttons)
         self.assertTrue(all(combo.isEnabled() for combo in content.findChildren(QComboBox)))
 
     def dispose_page(self, page) -> None:
@@ -270,7 +216,15 @@ class StudyPlanPageContractTests(unittest.TestCase):
             patch.object(study_plan_page, "get_study_day_budget", return_value=None),
             patch.object(study_plan_page, "get_budgeted_day_plan", return_value=None),
         ):
-            stack, page, _, _ = self.pdf_page(lambda *_args: None)
+            stack, page, _, _ = self.generation_page(lambda *_args: None)
+        saved = {
+            "id": 1,
+            "plan": {
+                "judgement": [], "goals": [], "short": [], "diagnostic": [],
+                "record_template": [], "expected": [], "evidence": [],
+            },
+            "items": [],
+        }
         other_page = None
         try:
             with (
@@ -285,7 +239,6 @@ class StudyPlanPageContractTests(unittest.TestCase):
                 self.assertEqual(read_budget.call_args.args[0], "2026-07-16")
                 other_page.widget()._budget_plan_callbacks[1]()
                 self.assertEqual(read_budget.call_args.args[0], self.state().today.isoformat())
-            saved = study_plan_page.get_active_study_plan()
             with patch.object(study_plan_page, "plan_day_feedback_details", return_value=[]) as feedback:
                 page.widget()._plan_callbacks[1](saved, allow_auto_refresh=False, reload_state=False)
                 self.assertIs(feedback.call_args.args[1], updated)
@@ -807,526 +760,17 @@ class StudyPlanPageContractTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("SURVIVED_RUNNING_PAGE_DELETE", result.stdout)
 
-    def test_bridge_result_messages_are_not_exposed(self) -> None:
-        from PySide6.QtWidgets import QLabel, QPushButton
-        from study_app.integrations.chatgpt_desktop_bridge import ChatGPTBridgeResult
 
-        cases = (
-            (
-                ChatGPTBridgeResult(False, "bridge_failed", "SECRET C:/private/cmd"),
-                "ChatGPT 未能完成 PDF 生成。为避免丢失，出题提示词已复制到剪贴板。",
-            ),
-            (
-                ChatGPTBridgeResult(
-                    True,
-                    "pdf_saved",
-                    "SECRET powershell failure",
-                    "test.pdf",
-                ),
-                "PDF 已安全下载，但系统未能自动打开文件。\n\n文件位置：\ntest.pdf",
-            ),
-        )
-        for result, expected_message in cases:
-            with self.subTest(code=result.code):
-                stack, page, warning, _information = self.pdf_page(
-                    Mock(return_value=result)
-                )
-                try:
-                    content = page.widget()
-                    button = next(
-                        item
-                        for item in content.findChildren(QPushButton)
-                        if item.text() == "让 ChatGPT 生成 PDF"
-                    )
-                    button.click()
-                    worker = content._chatgpt_bridge_threads[0]
-                    self.assertTrue(worker.wait(2000))
-                    self.app.processEvents()
 
-                    self.assertEqual(warning.call_args.args[2], expected_message)
-                    self.assertNotIn("SECRET", repr(warning.call_args))
-                    self.assertNotIn(
-                        "SECRET",
-                        " ".join(label.text() for label in content.findChildren(QLabel)),
-                    )
-                finally:
-                    self.dispose_page(page)
-                    stack.close()
 
-    def test_pdf_worker_exception_restores_busy_state(self) -> None:
-        from PySide6.QtWidgets import QPushButton
 
-        def fail(_prompt):
-            raise RuntimeError("bridge exploded")
 
-        stack, page, warning, _information = self.pdf_page(fail)
-        try:
-            content = page.widget()
-            buttons = {
-                button.text(): button for button in content.findChildren(QPushButton)
-            }
-            buttons["让 ChatGPT 生成 PDF"].click()
-            worker = content._chatgpt_bridge_threads[0]
-            self.assertTrue(worker.wait(2000))
-            self.app.processEvents()
 
-            self.assertEqual(content._chatgpt_bridge_threads, [])
-            self.assertFalse(buttons["停止 PDF 生成"].isVisible())
-            self.assertTrue(buttons["停止 PDF 生成"].isEnabled() is False)
-            warning.assert_called_once()
-            self.assertEqual(
-                warning.call_args.args[1:],
-                (
-                    "ChatGPT 自动生成失败",
-                    "ChatGPT 桌面桥接发生错误，请检查桌面端状态后重试。",
-                ),
-            )
-        finally:
-            self.dispose_page(page)
-            stack.close()
 
-    def test_pdf_worker_success_restores_busy_state(self) -> None:
-        from PySide6.QtCore import QThread
-        from PySide6.QtWidgets import QLabel, QPushButton
-        from study_app.integrations.chatgpt_desktop_bridge import ChatGPTBridgeResult
-        from study_app.ui.study_plan_page import _CHATGPT_BRIDGE_WORKERS
 
-        generator = Mock(
-            return_value=ChatGPTBridgeResult(
-                True,
-                "pdf_opened",
-                "opened",
-                "test.pdf",
-            )
-        )
-        stack, page, warning, information = self.pdf_page(generator)
-        callback_threads = []
-        information.side_effect = lambda *_args: callback_threads.append(
-            QThread.currentThread()
-        )
-        try:
-            content = page.widget()
-            buttons = {
-                button.text(): button for button in content.findChildren(QPushButton)
-            }
-            buttons["让 ChatGPT 生成 PDF"].click()
-            worker = content._chatgpt_bridge_threads[0]
-            self.assertTrue(worker.wait(2000))
-            self.app.processEvents()
 
-            generator.assert_called_once_with("test prompt")
-            self.assertNotIn(worker, _CHATGPT_BRIDGE_WORKERS)
-            self.assertEqual(content._chatgpt_bridge_threads, [])
-            self.assertFalse(buttons["停止 PDF 生成"].isVisible())
-            self.assertFalse(buttons["停止 PDF 生成"].isEnabled())
-            self.assertIn(
-                "ChatGPT 已生成 PDF，并已自动打开。",
-                [label.text() for label in content.findChildren(QLabel)],
-            )
-            warning.assert_not_called()
-            self.assertEqual(information.call_args.args[1], "PDF 已生成")
-            self.assertEqual(callback_threads, [self.app.thread()])
-        finally:
-            self.dispose_page(page)
-            stack.close()
 
-    def test_stopped_pdf_worker_ignores_late_success(self) -> None:
-        from PySide6.QtWidgets import QLabel, QPushButton
-        from study_app.integrations.chatgpt_desktop_bridge import ChatGPTBridgeResult
-        from study_app.ui.study_plan_page import _CHATGPT_BRIDGE_WORKERS
 
-        gate = threading.Event()
-
-        def delayed(_prompt):
-            gate.wait(2)
-            return ChatGPTBridgeResult(True, "pdf_opened", "opened", "test.pdf")
-
-        cancel_result = ChatGPTBridgeResult(True, "cancelled", "cancelled")
-        with patch(
-            "study_app.integrations.chatgpt_desktop_bridge.cancel_chatgpt_pdf_generation",
-            return_value=cancel_result,
-        ) as cancel:
-            stack, page, warning, information = self.pdf_page(delayed)
-            try:
-                content = page.widget()
-                buttons = {
-                    button.text(): button for button in content.findChildren(QPushButton)
-                }
-                buttons["让 ChatGPT 生成 PDF"].click()
-                worker = content._chatgpt_bridge_threads[0]
-                self.assertIn(worker, _CHATGPT_BRIDGE_WORKERS)
-                buttons["停止 PDF 生成"].click()
-                cancel.assert_called_once_with()
-                self.assertFalse(buttons["停止 PDF 生成"].isVisible())
-
-                gate.set()
-                self.assertTrue(worker.wait(2000))
-                self.app.processEvents()
-
-                self.assertNotIn(worker, _CHATGPT_BRIDGE_WORKERS)
-                self.assertEqual(content._chatgpt_bridge_threads, [])
-                self.assertIn(
-                    "ChatGPT PDF 生成已手动停止。",
-                    [label.text() for label in content.findChildren(QLabel)],
-                )
-                warning.assert_not_called()
-                self.assertNotIn(
-                    "PDF 已生成",
-                    [call_.args[1] for call_ in information.call_args_list],
-                )
-            finally:
-                gate.set()
-                self.dispose_page(page)
-                stack.close()
-
-    def test_pdf_worker_start_exception_releases_registry_and_busy_state(self) -> None:
-        from PySide6.QtWidgets import QPushButton
-        from study_app.ui.study_plan_page import _CHATGPT_BRIDGE_WORKERS
-
-        stack, page, warning, _information = self.pdf_page(Mock())
-        try:
-            content = page.widget()
-            buttons = {
-                button.text(): button for button in content.findChildren(QPushButton)
-            }
-            with patch("threading.Thread.start", side_effect=RuntimeError("start detail")):
-                buttons["让 ChatGPT 生成 PDF"].click()
-
-            self.assertEqual(_CHATGPT_BRIDGE_WORKERS, set())
-            self.assertEqual(content._chatgpt_bridge_threads, [])
-            self.assertTrue(buttons["停止 PDF 生成"].isHidden())
-            self.assertEqual(
-                warning.call_args.args[1:],
-                ("启动 PDF 生成失败", "未能启动 PDF 生成任务，请稍后重试。"),
-            )
-            self.assertNotIn("start detail", repr(warning.call_args))
-        finally:
-            self.dispose_page(page)
-            stack.close()
-
-    def test_pdf_cancel_exception_keeps_result_valid(self) -> None:
-        from PySide6.QtWidgets import QPushButton
-        from study_app.integrations.chatgpt_desktop_bridge import ChatGPTBridgeResult
-
-        gate = threading.Event()
-
-        def delayed(_prompt):
-            gate.wait(2)
-            return ChatGPTBridgeResult(True, "pdf_opened", "opened", "test.pdf")
-
-        with patch(
-            "study_app.integrations.chatgpt_desktop_bridge.cancel_chatgpt_pdf_generation",
-            side_effect=RuntimeError("cancel detail"),
-        ):
-            stack, page, warning, information = self.pdf_page(delayed)
-            try:
-                content = page.widget()
-                buttons = {
-                    button.text(): button for button in content.findChildren(QPushButton)
-                }
-                buttons["让 ChatGPT 生成 PDF"].click()
-                worker = content._chatgpt_bridge_threads[0]
-                buttons["停止 PDF 生成"].click()
-
-                self.assertFalse(worker.cancelled)
-                self.assertFalse(buttons["停止 PDF 生成"].isHidden())
-                self.assertEqual(
-                    warning.call_args.args[1:],
-                    ("停止 PDF 生成失败", "未能停止当前 PDF 生成任务，请稍后重试。"),
-                )
-                self.assertNotIn("cancel detail", repr(warning.call_args))
-
-                gate.set()
-                self.assertTrue(worker.wait(2000))
-                self.app.processEvents()
-                self.assertEqual(information.call_args.args[1], "PDF 已生成")
-            finally:
-                gate.set()
-                self.dispose_page(page)
-                stack.close()
-
-    def test_pdf_cancel_failure_keeps_result_valid(self) -> None:
-        from PySide6.QtWidgets import QPushButton
-        from study_app.integrations.chatgpt_desktop_bridge import ChatGPTBridgeResult
-
-        gate = threading.Event()
-
-        def delayed(_prompt):
-            gate.wait(2)
-            return ChatGPTBridgeResult(True, "pdf_opened", "opened", "test.pdf")
-
-        cancel_result = ChatGPTBridgeResult(False, "cancel_failed", "cannot cancel")
-        with patch(
-            "study_app.integrations.chatgpt_desktop_bridge.cancel_chatgpt_pdf_generation",
-            return_value=cancel_result,
-        ):
-            stack, page, warning, information = self.pdf_page(delayed)
-            try:
-                content = page.widget()
-                buttons = {
-                    button.text(): button for button in content.findChildren(QPushButton)
-                }
-                buttons["让 ChatGPT 生成 PDF"].click()
-                worker = content._chatgpt_bridge_threads[0]
-                buttons["停止 PDF 生成"].click()
-                self.assertFalse(buttons["停止 PDF 生成"].isHidden())
-                self.assertEqual(
-                    warning.call_args.args[1:],
-                    ("停止 PDF 生成失败", "未能停止当前 PDF 生成任务，请稍后重试。"),
-                )
-
-                gate.set()
-                self.assertTrue(worker.wait(2000))
-                self.app.processEvents()
-                self.assertEqual(information.call_args.args[1], "PDF 已生成")
-            finally:
-                gate.set()
-                self.dispose_page(page)
-                stack.close()
-
-    def test_cancelled_pdf_failure_is_not_reported_as_generation_error(self) -> None:
-        from PySide6.QtWidgets import QLabel, QPushButton
-        from study_app.integrations.chatgpt_desktop_bridge import ChatGPTBridgeResult
-
-        gate = threading.Event()
-
-        def delayed_failure(_prompt):
-            gate.wait(2)
-            raise RuntimeError("late bridge detail")
-
-        cancel_result = ChatGPTBridgeResult(True, "cancelled", "cancelled")
-        with patch(
-            "study_app.integrations.chatgpt_desktop_bridge.cancel_chatgpt_pdf_generation",
-            return_value=cancel_result,
-        ):
-            stack, page, warning, _information = self.pdf_page(delayed_failure)
-            try:
-                content = page.widget()
-                buttons = {
-                    button.text(): button for button in content.findChildren(QPushButton)
-                }
-                buttons["让 ChatGPT 生成 PDF"].click()
-                worker = content._chatgpt_bridge_threads[0]
-                buttons["停止 PDF 生成"].click()
-                gate.set()
-                self.assertTrue(worker.wait(2000))
-                self.app.processEvents()
-
-                warning.assert_not_called()
-                self.assertIn(
-                    "ChatGPT PDF 生成已手动停止。",
-                    [label.text() for label in content.findChildren(QLabel)],
-                )
-            finally:
-                gate.set()
-                self.dispose_page(page)
-                stack.close()
-
-    def test_cancelled_old_pdf_result_is_ignored_after_restart(self) -> None:
-        from PySide6.QtWidgets import QPushButton
-        from study_app.integrations.chatgpt_desktop_bridge import ChatGPTBridgeResult
-
-        first_gate = threading.Event()
-        second_gate = threading.Event()
-        calls = 0
-
-        def delayed(_prompt):
-            nonlocal calls
-            calls += 1
-            (first_gate if calls == 1 else second_gate).wait(2)
-            return ChatGPTBridgeResult(True, "pdf_opened", "opened", f"test-{calls}.pdf")
-
-        cancel_result = ChatGPTBridgeResult(True, "cancelled", "cancelled")
-        with patch(
-            "study_app.integrations.chatgpt_desktop_bridge.cancel_chatgpt_pdf_generation",
-            return_value=cancel_result,
-        ):
-            stack, page, warning, information = self.pdf_page(delayed)
-            try:
-                content = page.widget()
-                buttons = {
-                    button.text(): button for button in content.findChildren(QPushButton)
-                }
-                buttons["让 ChatGPT 生成 PDF"].click()
-                first_worker = content._chatgpt_bridge_threads[0]
-                buttons["停止 PDF 生成"].click()
-                first_gate.set()
-                self.assertTrue(first_worker.wait(2000))
-
-                buttons["让 ChatGPT 生成 PDF"].click()
-                second_worker = content._chatgpt_bridge_threads[-1]
-                self.app.processEvents()
-                self.assertNotIn(
-                    "PDF 已生成",
-                    [call_.args[1] for call_ in information.call_args_list],
-                )
-
-                second_gate.set()
-                self.assertTrue(second_worker.wait(2000))
-                self.app.processEvents()
-                self.assertEqual(
-                    [
-                        call_.args[1]
-                        for call_ in information.call_args_list
-                        if call_.args[1] == "PDF 已生成"
-                    ],
-                    ["PDF 已生成"],
-                )
-                warning.assert_not_called()
-                self.assertEqual(calls, 2)
-            finally:
-                first_gate.set()
-                second_gate.set()
-                self.dispose_page(page)
-                stack.close()
-
-    def test_pdf_generation_is_singleton_and_cancelable_across_pages(self) -> None:
-        from PySide6.QtWidgets import QPushButton
-        from study_app.integrations.chatgpt_desktop_bridge import ChatGPTBridgeResult
-        from study_app.ui.study_plan_page import _CHATGPT_BRIDGE_WORKERS
-
-        gate = threading.Event()
-
-        def delayed(_prompt):
-            gate.wait(2)
-            return ChatGPTBridgeResult(True, "pdf_opened", "opened", "test.pdf")
-
-        generator = Mock(side_effect=delayed)
-        cancel_result = ChatGPTBridgeResult(True, "cancelled", "cancelled")
-        with patch(
-            "study_app.integrations.chatgpt_desktop_bridge.cancel_chatgpt_pdf_generation",
-            return_value=cancel_result,
-        ) as cancel:
-            stack_one, page_one, _warning_one, _information_one = self.pdf_page(generator)
-            stack_two, page_two, _warning_two, information_two = self.pdf_page(generator)
-            try:
-                first_button = next(
-                    button
-                    for button in page_one.widget().findChildren(QPushButton)
-                    if button.text() == "让 ChatGPT 生成 PDF"
-                )
-                second_buttons = {
-                    button.text(): button
-                    for button in page_two.widget().findChildren(QPushButton)
-                }
-                first_button.click()
-                worker = page_one.widget()._chatgpt_bridge_threads[0]
-                second_buttons["让 ChatGPT 生成 PDF"].click()
-
-                self.assertEqual(generator.call_count, 1)
-                self.assertEqual(len(_CHATGPT_BRIDGE_WORKERS), 1)
-                self.assertEqual(information_two.call_args.args[1], "正在生成 PDF")
-                self.assertFalse(second_buttons["停止 PDF 生成"].isHidden())
-
-                self.dispose_page(page_one)
-                page_one = None
-                second_buttons["停止 PDF 生成"].click()
-                cancel.assert_called_once_with()
-
-                gate.set()
-                self.assertTrue(worker.wait(2000))
-                self.app.processEvents()
-                self.assertEqual(_CHATGPT_BRIDGE_WORKERS, set())
-                self.assertTrue(second_buttons["停止 PDF 生成"].isHidden())
-            finally:
-                gate.set()
-                self.dispose_page(page_two)
-                if page_one is not None:
-                    self.dispose_page(page_one)
-                stack_two.close()
-                stack_one.close()
-
-    def test_app_shutdown_completes_cancel_once_before_returning(self) -> None:
-        import time
-        from study_app.integrations.chatgpt_desktop_bridge import ChatGPTBridgeResult
-        from study_app.ui.study_plan_page import _CHATGPT_BRIDGE_WORKERS
-
-        stack_one, page_one, _warning_one, _information_one = self.pdf_page(Mock())
-        stack_two, page_two, _warning_two, _information_two = self.pdf_page(Mock())
-        cancel_called = threading.Event()
-
-        def bounded_cancel(*, deadline):
-            cancel_called.set()
-            time.sleep(0.05)
-            return ChatGPTBridgeResult(True, "cancelled", "ok")
-
-        worker = Mock()
-        worker.wait.return_value = True
-        _CHATGPT_BRIDGE_WORKERS.add(worker)
-        try:
-            with patch(
-                "study_app.integrations.chatgpt_desktop_bridge.cancel_chatgpt_pdf_generation",
-                side_effect=bounded_cancel,
-            ) as cancel:
-                started = time.monotonic()
-                self.app.aboutToQuit.emit()
-                elapsed = time.monotonic() - started
-                self.assertTrue(cancel_called.is_set())
-                cancel.assert_called_once()
-                self.assertGreater(cancel.call_args.kwargs["deadline"], started)
-            self.assertGreaterEqual(elapsed, 0.04)
-            self.assertLess(elapsed, 0.5)
-            worker.wait.assert_called_once()
-            self.assertLessEqual(worker.wait.call_args.args[0], 2000)
-        finally:
-            from study_app.integrations import chatgpt_desktop_bridge
-            from study_app.ui import study_plan_page as study_plan_page_module
-
-            chatgpt_desktop_bridge._PDF_SHUTDOWN_EVENT.clear()
-            study_plan_page_module._CHATGPT_BRIDGE_SHUTDOWN_STARTED = False
-            _CHATGPT_BRIDGE_WORKERS.discard(worker)
-            self.dispose_page(page_two)
-            self.dispose_page(page_one)
-            stack_two.close()
-            stack_one.close()
-
-    def test_running_pdf_worker_survives_page_deletion(self) -> None:
-        code = textwrap.dedent(
-            """
-            import os, time
-            os.environ['QT_QPA_PLATFORM'] = 'offscreen'
-            from PySide6.QtCore import QCoreApplication, QEvent
-            from PySide6.QtWidgets import QPushButton
-            from study_app.integrations.chatgpt_desktop_bridge import ChatGPTBridgeResult
-            from test_study_plan_page_contract import StudyPlanPageContractTests
-
-            case = StudyPlanPageContractTests('runTest')
-            case.setUpClass()
-            def delayed(_prompt):
-                time.sleep(0.25)
-                return ChatGPTBridgeResult(True, 'pdf_opened', 'ok', 'test.pdf')
-
-            stack, page, _warning, _information = case.pdf_page(delayed)
-            content = page.widget()
-            button = next(
-                item for item in content.findChildren(QPushButton)
-                if item.text() == '让 ChatGPT 生成 PDF'
-            )
-            button.click()
-            worker = content._chatgpt_bridge_threads[0]
-            page.deleteLater()
-            QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
-            case.app.processEvents()
-            assert worker.wait(2000)
-            case.app.processEvents()
-            stack.close()
-            print('SURVIVED_RUNNING_PDF_PAGE_DELETE')
-            """
-        )
-        env = {
-            **os.environ,
-            "PYTHONPATH": os.pathsep.join(("tests", os.environ.get("PYTHONPATH", ""))),
-        }
-        result = subprocess.run(
-            [sys.executable, "-c", code],
-            cwd=os.getcwd(),
-            env=env,
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-        self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertIn("SURVIVED_RUNNING_PDF_PAGE_DELETE", result.stdout)
 
     def test_plan_section_card_callbacks_preserve_item_ids_and_source_text(self) -> None:
         from PySide6.QtWidgets import QCheckBox, QPushButton
@@ -1334,7 +778,6 @@ class StudyPlanPageContractTests(unittest.TestCase):
 
         on_check = Mock()
         on_copy = Mock()
-        on_send = Mock()
         item_map = {("short", "plain", "完成图搜索作业"): {"id": 17, "checked": False}}
         card, checkboxes = study_plan_page.plan_section_card(
             "今日作业",
@@ -1343,7 +786,6 @@ class StudyPlanPageContractTests(unittest.TestCase):
             section_key="short",
             on_check=on_check,
             on_copy_practice_prompt=on_copy,
-            on_send_chatgpt=on_send,
             item_by_hash=item_map,
         )
         self.assertEqual(card.objectName(), "Card")
@@ -1353,9 +795,8 @@ class StudyPlanPageContractTests(unittest.TestCase):
         on_check.assert_called_once_with(17, True)
         buttons = {button.text(): button for button in card.findChildren(QPushButton)}
         buttons["复制出题提示词"].click()
-        buttons["让 ChatGPT 生成 PDF"].click()
+        self.assertNotIn("让 ChatGPT 生成 PDF", buttons)
         on_copy.assert_called_once_with("完成图搜索作业")
-        on_send.assert_called_once_with("完成图搜索作业")
 
     def test_homework_result_buttons_record_correctness_with_item_identity(self) -> None:
         from PySide6.QtWidgets import QPushButton

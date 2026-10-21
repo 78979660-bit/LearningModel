@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from typing import Any
 
 from study_app.ai.audit import (
@@ -21,6 +22,8 @@ from study_app.core.active_subjects import (
     archived_subject_names,
     subject_reference_violations,
 )
+from study_app.ai.providers import LLMSettings
+from study_app.data.db_runtime import DEFAULT_DB_PATH
 
 
 def build_daily_summary_payload(state, records: list[dict[str, Any]]) -> dict[str, Any]:
@@ -119,7 +122,10 @@ def local_daily_summary(state, records: list[dict[str, Any]]) -> dict[str, list[
     }
 
 
-def generate_daily_summary_with_llm(state, records: list[dict[str, Any]]) -> dict[str, list[str]]:
+def generate_daily_summary_with_llm(
+    state, records: list[dict[str, Any]], *,
+    settings: LLMSettings | None = None, db_path: str | Path = DEFAULT_DB_PATH,
+) -> dict[str, list[str]]:
     payload = build_daily_summary_payload(state, records)
     prompt = (
         "你是学习模型桌面应用的每日总结器。请只输出 JSON，不要解释。\n"
@@ -136,10 +142,16 @@ def generate_daily_summary_with_llm(state, records: list[dict[str, Any]]) -> dic
         "输入：\n"
         + json.dumps(payload, ensure_ascii=False, default=str)
     )
+    call_options = {}
+    if settings is not None:
+        call_options["settings"] = settings
+    if Path(db_path) != Path(DEFAULT_DB_PATH):
+        call_options["db_path"] = db_path
     content = audited_chat_completion_json(
         "daily_summary",
         prompt,
         summarize_payload(payload),
+        **call_options,
     )
     try:
         raw = json.loads(content)
@@ -151,10 +163,11 @@ def generate_daily_summary_with_llm(state, records: list[dict[str, Any]]) -> dic
             archived_subject_names(state.subjects),
         )
     except Exception as error:
-        mark_audit_validation_failed(content, error)
+        mark_audit_validation_failed(content, error, **({"db_path": db_path} if Path(db_path) != Path(DEFAULT_DB_PATH) else {}))
         raise
-    mark_audit_validated(content)
-    mark_audit_adopted(content)
+    audit_options = {"db_path": db_path} if Path(db_path) != Path(DEFAULT_DB_PATH) else {}
+    mark_audit_validated(content, **audit_options)
+    mark_audit_adopted(content, **audit_options)
     return summary
 
 

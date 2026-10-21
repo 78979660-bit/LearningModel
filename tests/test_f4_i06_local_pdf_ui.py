@@ -29,11 +29,10 @@ def test_non_oj_card_exposes_local_button_and_preserves_source_text() -> None:
         [line],
         interactive=True,
         on_generate_local_pdf=callback,
-        on_send_chatgpt=Mock(),
     )
     buttons = {button.text(): button for button in card.findChildren(QPushButton)}
     assert "本地生成练习卷" in buttons
-    assert "让 ChatGPT 生成 PDF" in buttons
+    assert "让 ChatGPT 生成 PDF" not in buttons
     buttons["本地生成练习卷"].click()
     callback.assert_called_once_with(line)
     card.deleteLater()
@@ -46,7 +45,6 @@ def test_oj_card_never_exposes_local_or_chatgpt_pdf_button() -> None:
         ["当天作业：题库模板 CS-OJ-PRACTICE；LeetCode OJ 原题；题量 2 题。"],
         interactive=True,
         on_generate_local_pdf=Mock(),
-        on_send_chatgpt=Mock(),
     )
     labels = {button.text() for button in card.findChildren(QPushButton)}
     assert "本地生成练习卷" not in labels
@@ -54,19 +52,17 @@ def test_oj_card_never_exposes_local_or_chatgpt_pdf_button() -> None:
     card.deleteLater()
 
 
-def test_plan_line_adapter_passes_explicit_subject_and_never_calls_chatgpt() -> None:
+def test_plan_line_adapter_passes_explicit_subject_to_local_service() -> None:
     fake_spec = object()
     fake_result = object()
     with (
         patch("study_app.core.local_practice_service.spec_from_homework", return_value=fake_spec) as build,
         patch("study_app.core.local_practice_service.generate_local_practice_paper", return_value=fake_result) as generate,
-        patch("study_app.integrations.chatgpt_desktop_bridge.generate_pdf_with_chatgpt") as chatgpt,
     ):
         result = generate_local_practice_for_plan_line("本地作业", "高等数学")
     assert result is fake_result
     build.assert_called_once_with("本地作业", subject="高等数学")
     generate.assert_called_once_with(fake_spec)
-    chatgpt.assert_not_called()
 
 
 def test_subject_and_oj_guards_fail_before_service_import_work() -> None:
@@ -93,5 +89,5 @@ def test_success_message_lists_all_three_outputs(tmp_path: Path) -> None:
         manifest_json=tmp_path / "manifest.json",
     )
     message = local_practice_success_message(result)
-    assert "不依赖 ChatGPT 或网络" in message
+    assert "可离线使用" in message
     assert "questions.pdf" in message and "answers.pdf" in message and "manifest.json" in message

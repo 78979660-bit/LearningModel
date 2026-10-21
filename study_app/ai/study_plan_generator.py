@@ -2,6 +2,7 @@ from __future__ import annotations
 import re
 
 import json
+from pathlib import Path
 from typing import Any
 
 from study_app.ai.audit import (
@@ -20,6 +21,7 @@ from study_app.ai.validation import (
 )
 from study_app.core.active_subjects import subject_reference_violations
 from study_app.core.study_phase import ScopeValidationError
+from study_app.data.db_runtime import DEFAULT_DB_PATH
 
 
 PLAN_KEYS = (
@@ -33,6 +35,15 @@ PLAN_KEYS = (
 )
 
 PLAN_LLM_TIMEOUT_SECONDS = 35
+
+
+def _generation_path_kwargs(
+    db_path: str | Path,
+    model_path: str | Path | None,
+) -> dict[str, object]:
+    if Path(db_path) == Path(DEFAULT_DB_PATH) and model_path is None:
+        return {}
+    return {"db_path": db_path, "model_path": model_path}
 
 
 class BudgetSuggestionValidationError(LLMValidationError):
@@ -166,25 +177,34 @@ def _compact_value(value: Any, depth: int = 0) -> Any:
     return value
 
 
-def generate_plan_with_llm(payload: dict[str, Any]) -> dict[str, list[str]]:
+def generate_plan_with_llm(
+    payload: dict[str, Any],
+    *,
+    db_path: str | Path = DEFAULT_DB_PATH,
+    model_path: str | Path | None = None,
+) -> dict[str, list[str]]:
     prompt = build_plan_prompt(payload)
+    path_kwargs = _generation_path_kwargs(db_path, model_path)
     content = audited_chat_completion_json(
         "plan_generation",
         prompt,
         summarize_payload(payload),
         timeout_seconds=PLAN_LLM_TIMEOUT_SECONDS,
+        **({"db_path": db_path} if path_kwargs else {}),
     )
     try:
         plan = parse_and_validate_plan(content)
         validate_plan_allowed_subjects(plan, payload)
-        validate_plan_exam_scope(plan, payload)
-        mark_audit_validated(content)
-        mark_audit_adopted(content)
+        validate_plan_exam_scope(plan, payload, **path_kwargs)
+        audit_kwargs = {"db_path": db_path} if path_kwargs else {}
+        mark_audit_validated(content, **audit_kwargs)
+        mark_audit_adopted(content, **audit_kwargs)
         return plan
     except ScopeValidationError:
         raise
     except Exception as first_error:
-        mark_audit_validation_failed(content, first_error)
+        audit_kwargs = {"db_path": db_path} if path_kwargs else {}
+        mark_audit_validation_failed(content, first_error, **audit_kwargs)
         repair_prompt = build_plan_repair_prompt(payload, content, first_error)
         repaired_content = audited_chat_completion_json(
             "plan_generation_repair",
@@ -195,24 +215,25 @@ def generate_plan_with_llm(payload: dict[str, Any]) -> dict[str, list[str]]:
             },
             timeout_seconds=PLAN_LLM_TIMEOUT_SECONDS,
             parent_audit_id=audit_id_of(content),
+            **({"db_path": db_path} if path_kwargs else {}),
         )
         try:
             plan = parse_and_validate_plan(repaired_content)
             validate_plan_allowed_subjects(plan, payload)
-            validate_plan_exam_scope(plan, payload)
+            validate_plan_exam_scope(plan, payload, **path_kwargs)
         except ScopeValidationError as scope_error:
-            mark_audit_validation_failed(repaired_content, scope_error)
+            mark_audit_validation_failed(repaired_content, scope_error, **audit_kwargs)
             raise
         except Exception as repair_error:
-            mark_audit_validation_failed(repaired_content, repair_error)
+            mark_audit_validation_failed(repaired_content, repair_error, **audit_kwargs)
             raise LLMValidationError(
                 f"LLM 首次输出不符合计划契约：{first_error}；"
                 f"已要求 LLM 修复一次，但修复后仍不合格：{repair_error}"
             ) from repair_error
         plan.setdefault("evidence", [])
         plan["evidence"].append("生成方式：LLM 首次输出未通过本地校验，已自动修复一次并通过校验。")
-        mark_audit_validated(repaired_content)
-        mark_audit_adopted(repaired_content)
+        mark_audit_validated(repaired_content, **audit_kwargs)
+        mark_audit_adopted(repaired_content, **audit_kwargs)
         return plan
 
 
@@ -235,13 +256,21 @@ def validate_plan_allowed_subjects(plan: dict[str, list[str]], payload: dict[str
         )
 
 
-def validate_plan_exam_scope(plan: dict[str, list[str]], payload: dict[str, Any]) -> None:
+def validate_plan_exam_scope(
+    plan: dict[str, list[str]],
+    payload: dict[str, Any],
+    *,
+    db_path: str | Path = DEFAULT_DB_PATH,
+    model_path: str | Path | None = None,
+) -> None:
     from study_app.core.study_phase import out_of_exam_scope_references
 
     subject = str(payload.get("subject_scope") or "")
     checked_keys = ("judgement", "goals", "short", "diagnostic", "record_template", "expected")
     text = "\n".join(line for key in checked_keys for line in plan.get(key, []))
-    violations = out_of_exam_scope_references(subject, text)
+    violations = out_of_exam_scope_references(
+        subject, text, db_path=db_path, model_path=model_path
+    )
     if violations:
         raise LLMValidationError("计划包含考试范围外内容：" + "、".join(violations[:8]))
 

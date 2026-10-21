@@ -1,14 +1,28 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from study_app.core.dashboard import TodoItem
 from study_app.core.practice_bank import generate_practice_assignment
+from study_app.data.db_runtime import DEFAULT_DB_PATH
 
 
-def _lowest_cs_oj_focus() -> str | None:
+def _practice_path_kwargs(db_path=None, model_path=None, records=None) -> dict[str, object]:
+    values: dict[str, object] = {}
+    if db_path is not None and Path(db_path) != Path(DEFAULT_DB_PATH):
+        values["db_path"] = db_path
+    if model_path is not None:
+        values["model_path"] = model_path
+    if records is not None:
+        values["records"] = records
+    return values
+
+
+def _lowest_cs_oj_focus(model: dict | None = None) -> str | None:
     try:
         from study_app.core.study_phase import load_learning_model
 
-        model = load_learning_model()
+        model = model if model is not None else load_learning_model()
         subject = next(
             item for item in model.get("subjects", [])
             if item.get("name") == "计算机科学"
@@ -42,14 +56,28 @@ def _daily_plan(
     fallback_subject: str,
     phase_policy: dict | None = None,
     readiness: dict | None = None,
+    db_path=None,
+    model_path=None,
+    records=None,
 ) -> list[str]:
     phase_policy = phase_policy or {}
     final_review = phase_policy.get("phase") == "final_review"
     first = focus_topics[0] if focus_topics else fallback_subject
     if _is_cs_oj_focus(first, fallback_subject):
-        return [_oj_daily_plan_text(first)]
-    first_homework = _homework_for_topic(first)
-    first_standard = _completion_standard_for_topic(first)
+        return [
+            _oj_daily_plan_text(
+                first,
+                db_path=db_path,
+                model_path=model_path,
+                records=records,
+            )
+        ]
+    first_homework = _homework_for_topic(
+        first, db_path=db_path, model_path=model_path, records=records
+    )
+    first_standard = _completion_standard_for_topic(
+        first, db_path=db_path, model_path=model_path, records=records
+    )
     memory_detail = ""
     if memory_risks:
         item = memory_risks[0]
@@ -142,25 +170,44 @@ def _oj_topic_hint(topic: str) -> str:
     return "数组、哈希与前缀结构"
 
 
-def _oj_seed_lines(topic: str, limit: int = 3) -> list[str]:
-    return [line for line, _score in _oj_seed_line_scores(topic, limit)]
+def _oj_seed_lines(
+    topic: str, limit: int = 3, *, db_path=None, model_path=None, records=None
+) -> list[str]:
+    return [
+        line
+        for line, _score in _oj_seed_line_scores(
+            topic, limit, db_path=db_path, model_path=model_path, records=records
+        )
+    ]
 
 
-def _oj_seed_line_scores(topic: str, limit: int = 3) -> list[tuple[str, float | None]]:
+def _oj_seed_line_scores(
+    topic: str, limit: int = 3, *, db_path=None, model_path=None, records=None
+) -> list[tuple[str, float | None]]:
     try:
         from study_app.data.practice_repository import find_practice_problems
         from study_app.data.database import recent_study_plan_texts
+        from study_app.data.db_runtime import DEFAULT_DB_PATH
+
+        database_path = db_path or DEFAULT_DB_PATH
 
         hint = _oj_topic_hint(topic)
-        assignment = generate_practice_assignment(f"计算机科学 / 算法设计与OJ训练 / {hint}", 1)
+        assignment = generate_practice_assignment(
+            f"计算机科学 / 算法设计与OJ训练 / {hint}",
+            1,
+            **_practice_path_kwargs(db_path, model_path, records),
+        )
         problems = find_practice_problems(
             template_id="CS-OJ-PRACTICE",
             subject="计算机科学",
             topic=hint,
             difficulty=assignment.difficulty_score,
             limit=max(limit * 8, 24),
+            db_path=database_path,
         )
-        recent_text = "\n".join(recent_study_plan_texts("计算机科学", limit=5))
+        recent_text = "\n".join(
+            recent_study_plan_texts("计算机科学", limit=5, db_path=database_path)
+        )
         fresh_problems = [
             problem for problem in problems
             if str(problem.get("title") or "").strip()
@@ -185,14 +232,24 @@ def _oj_seed_line_scores(topic: str, limit: int = 3) -> list[tuple[str, float | 
         return []
 
 
-def _oj_daily_plan_text(topic: str) -> str:
+def _oj_daily_plan_text(topic: str, *, db_path=None, model_path=None, records=None) -> str:
     hint = _oj_topic_hint(topic)
-    seeds = _oj_seed_line_scores(topic, limit=3)
+    seeds = _oj_seed_line_scores(
+        topic,
+        limit=3,
+        db_path=db_path,
+        model_path=model_path,
+        records=records,
+    )
     if seeds:
         seed_text = "\n".join(f"  {index}. {line}" for index, (line, _score) in enumerate(seeds, start=1))
     else:
         seed_text = "  1. 从 LeetCode 官方题库中选择与本主题匹配的 2 道原题。"
-    assignment = generate_practice_assignment(f"计算机科学 / 算法设计与OJ训练 / {hint}", 1)
+    assignment = generate_practice_assignment(
+        f"计算机科学 / 算法设计与OJ训练 / {hint}",
+        1,
+        **_practice_path_kwargs(db_path, model_path, records),
+    )
     seed_scores = [float(score) for _line, score in seeds if isinstance(score, (int, float))]
     reference_difficulty = round(sum(seed_scores) / len(seed_scores)) if seed_scores else assignment.difficulty_score
     reference_label = (
@@ -216,12 +273,18 @@ def _oj_daily_plan_text(topic: str) -> str:
     )
 
 
-def _homework_for_topic(topic: str) -> str:
-    return generate_practice_assignment(topic, 1).to_homework_text()
+def _homework_for_topic(topic: str, *, db_path=None, model_path=None, records=None) -> str:
+    return generate_practice_assignment(
+        topic, 1, **_practice_path_kwargs(db_path, model_path, records)
+    ).to_homework_text()
 
 
-def _completion_standard_for_topic(topic: str) -> str:
-    assignment = generate_practice_assignment(topic, 1)
+def _completion_standard_for_topic(
+    topic: str, *, db_path=None, model_path=None, records=None
+) -> str:
+    assignment = generate_practice_assignment(
+        topic, 1, **_practice_path_kwargs(db_path, model_path, records)
+    )
     prefix = f"参考难度 {assignment.difficulty_score}/100；"
     if any(keyword in topic for keyword in ["AVL", "哈希", "KMP", "复杂度", "算法", "数据结构"]):
         return prefix + "能不看资料写出核心定义/流程，并独立完成至少 1 道基础手算题。"

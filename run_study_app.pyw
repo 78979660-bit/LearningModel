@@ -62,6 +62,9 @@ def _run_self_test(destination: Path) -> None:
         "PySide6.QtCore",
         "PySide6.QtGui",
         "PySide6.QtWidgets",
+        "PySide6.QtQml",
+        "PySide6.QtQuick",
+        "PySide6.QtQuickControls2",
         "PIL.Image",
         "fitz",
         "pymupdf",
@@ -82,6 +85,9 @@ def _run_self_test(destination: Path) -> None:
 
     ensure_seeded_database()
     ensure_practice_bank_seeded()
+    from study_app.quick.self_test import run_probe
+
+    qml_probe = run_probe(qt_application, isolated_fixture=True)
     payload = {
         "status": "ok",
         "version": APP_VERSION,
@@ -93,6 +99,7 @@ def _run_self_test(destination: Path) -> None:
         "counts": get_counts(),
         "capabilities": detect_optional_capabilities(),
         "module_smoke": list(smoke_modules),
+        "qml": qml_probe,
     }
     destination.parent.mkdir(parents=True, exist_ok=True)
     destination.write_text(
@@ -137,7 +144,7 @@ def _write_startup_failure() -> None:
             continue
 
 
-def main() -> None:
+def _main() -> None:
     self_test = None
     try:
         _configure_runtime()
@@ -146,9 +153,14 @@ def main() -> None:
             _run_self_test(self_test)
             return
 
-        from study_app.ui.app_runtime import run_app
+        if "--qml" in sys.argv[1:]:
+            from study_app.quick.runtime import run_app
 
-        run_app()
+            raise SystemExit(run_app())
+        else:
+            from study_app.ui.app_runtime import run_app
+
+            run_app()
     except Exception:
         try:
             _write_startup_failure()
@@ -156,6 +168,31 @@ def main() -> None:
             if self_test is None:
                 _show_startup_error()
         raise
+
+
+def main() -> None:
+    # A direct developer self-test is isolated too; the verifier already passes
+    # its own explicit temporary root and retains it for checking the receipt.
+    if "--self-test" in sys.argv[1:] and not os.environ.get("LEARNINGMODEL_DATA_ROOT", "").strip():
+        import tempfile
+
+        with tempfile.TemporaryDirectory(prefix="learning-release-selftest-") as temporary:
+            root = Path(temporary)
+            legacy = root / "empty-legacy"
+            legacy.mkdir()
+            os.environ["LEARNINGMODEL_DATA_ROOT"] = str(root / "user")
+            os.environ["LEARNINGMODEL_LEGACY_ROOT"] = str(legacy)
+            index = sys.argv.index("--self-test")
+            if index + 1 == len(sys.argv) or sys.argv[index + 1].startswith("--"):
+                sys.argv.insert(index + 1, str(Path(tempfile.gettempdir()) / f"LearningModel-self-test-{os.getpid()}.json"))
+            try:
+                _main()
+            finally:
+                # Workers have drained before _main returns. Close file handlers
+                # before Windows removes this self-test's temporary profile.
+                logging.shutdown()
+    else:
+        _main()
 
 
 if __name__ == "__main__":

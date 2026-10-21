@@ -43,7 +43,7 @@ def infer_subject_topic_from_plan_line(line: str, selected_subject: str | None =
     if not subject:
         subject = next((item for item in subject_candidates if item in line), "")
     if not subject:
-        subject = next((value for key, value in subject_aliases.items() if key in line), "微积分")
+        subject = next((value for key, value in subject_aliases.items() if key in line), "")
     if "题库模板" in line or line.startswith("当天作业"):
         homework = line.split("当天作业：", 1)[-1].strip()
         template_match = re.search(r"题库模板\s*([A-Z0-9-]+)", homework)

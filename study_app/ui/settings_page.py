@@ -4,6 +4,7 @@ from study_app.ai.providers import (
     LLMSettings,
     LLM_FEATURES,
     PROVIDERS,
+    credential_identity,
     load_llm_settings,
     provider_status,
     save_llm_settings,
@@ -282,6 +283,16 @@ def settings_page():
             checkbox.setChecked(True)
         save_llm_config()
 
+    credential_scope = [settings.credential_identity]
+
+    def invalidate_credential_on_identity_change():
+        current = credential_identity(provider_input.currentData(), base_url_input.text())
+        if current != credential_scope[0]:
+            api_key_input.clear()
+            credential_scope[0] = current
+
+    provider_input.currentIndexChanged.connect(invalidate_credential_on_identity_change)
+    base_url_input.textChanged.connect(invalidate_credential_on_identity_change)
     provider_input.currentIndexChanged.connect(sync_model_placeholder)
     save_llm_button.clicked.connect(save_llm_config)
     local_mode_button.clicked.connect(switch_local_mode)

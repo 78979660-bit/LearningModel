@@ -44,7 +44,9 @@
 
 1.0.0 在已发布的 0.1.2 基础上统一版本号，并调整这份说明。已有的用户数据目录、升级标识和数据库结构继续沿用，升级前仍建议先备份自己的学习资料。
 
-具体的构建、补测范围和历史验收关系见 [1.0.0 发布说明](https://github.com/78979660-bit/LearningModel/blob/v1.0.0/docs/RELEASE_ACCEPTANCE_1.0.0.md)；以往版本的更新见 [更新记录](https://github.com/78979660-bit/LearningModel/blob/v1.0.0/release/更新记录.md)。
+具体的构建、补测范围和历史验收关系见 [1.0.0 发布说明](docs/RELEASE_ACCEPTANCE_1.0.0.md)；以往版本的更新见 [更新记录](release/更新记录.md)。
+
+主分支已同步 1.0.0 的 QML 源码，并保留已有维护修复。开发可使用 `main`；需要重现已发布安装包时，请使用 `v1.0.0` 标签。对应关系及本次验证见 [源码同步记录](docs/SOURCE_SYNC_1.0.0.md)。
 
 ## 下载与安装
 
@@ -56,7 +58,7 @@
 
 **这一版仍未进行代码签名。** Windows 或浏览器可能提示未知发布者或 SmartScreen。请从本项目 Release 下载，并用同版 `SHA256SUMS.txt` 核对文件；校验和只能验证文件一致性，不能代替发布者身份验证。
 
-升级安装会沿用现有用户数据，卸载默认保留学习资料。备份、升级及卸载的具体步骤见 [安装与升级说明](https://github.com/78979660-bit/LearningModel/blob/v1.0.0/release/安装与升级说明.md)。
+升级安装会沿用现有用户数据，卸载默认保留学习资料。备份、升级及卸载的具体步骤见 [安装与升级说明](release/安装与升级说明.md)。
 
 ## 开始之前的小提示
 
@@ -87,7 +89,7 @@ py -3.14 -m venv .venv-build
 & .\.venv-build\Scripts\python.exe -m pytest -q
 ```
 
-构建 Windows 安装包需要 PowerShell 7 和 Inno Setup 7.1.0。构建参数、资源检查和校验步骤见 [构建说明](https://github.com/78979660-bit/LearningModel/blob/v1.0.0/docs/BUILDING.md)。界面迁移的过程和阶段记录也保留在 [迁移方案](https://github.com/78979660-bit/LearningModel/blob/v1.0.0/docs/QML_MIGRATION_PLAN.md) 中，感兴趣的话可以继续看看。
+构建 Windows 安装包需要 PowerShell 7 和 Inno Setup 7.1.0。构建参数、资源检查和校验步骤见 [构建说明](docs/BUILDING.md)。界面迁移的过程和阶段记录也保留在 [迁移方案](docs/QML_MIGRATION_PLAN.md) 中，感兴趣的话可以继续看看。
 
 ## 项目里有什么？
 

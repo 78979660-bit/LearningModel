@@ -157,3 +157,30 @@ def test_repeated_sync_does_not_append_duplicate_contribution(tmp_path):
         model_path=model_path, db_path=db_path,
     )
     assert len(diagnosis["contributions"]) == 1
+
+def test_reader_shares_io_but_new_read_observes_record_changes(tmp_path, monkeypatch):
+    from contextlib import contextmanager
+    from study_app.core import mastery_trace
+    model_path, db_path = _fixture(tmp_path)
+    record_id = database.add_learning_record(
+        _record(100, date_string="2026-09-15"), db_path=db_path, model_path=model_path)
+    reads = []
+    original = mastery_trace.connect_readonly
+    @contextmanager
+    def counted(path):
+        reads.append(path)
+        with original(path) as connection:
+            yield connection
+    monkeypatch.setattr(mastery_trace, "connect_readonly", counted)
+    reader = mastery_trace.MasteryTraceReader(model_path=model_path, db_path=db_path)
+    first = reader.trace("测试学科", "基础", "哈希表")
+    second = reader.trace("测试学科", "基础", "哈希表")
+    assert first == second
+    assert len(reads) == 1
+    first["contributions"][0]["record_status"] = "modified_by_caller"
+    assert reader.trace("测试学科", "基础", "哈希表") == second
+    with database.connect(db_path) as connection:
+        connection.execute("DELETE FROM learning_records WHERE id = ?", (record_id,))
+    fresh = mastery_trace.MasteryTraceReader(model_path=model_path, db_path=db_path)
+    assert fresh.trace("测试学科", "基础", "哈希表")["contributions"][0]["record_status"] == "missing"
+    assert len(reads) == 2

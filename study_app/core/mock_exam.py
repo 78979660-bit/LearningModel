@@ -65,7 +65,13 @@ def _blueprint_for_subject(subject: str, exam_scope: dict[str, Any] | None) -> l
     ]
 
 
-def mock_exam_readiness(state: Any, subject: str) -> dict[str, Any]:
+def mock_exam_readiness(
+    state: Any,
+    subject: str,
+    *,
+    db_path: str = DEFAULT_DB_PATH,
+    model_path: str | None = None,
+) -> dict[str, Any]:
     from study_app.core.study_phase import (
         exam_scope_label,
         exam_scope_submodule_stats,
@@ -77,23 +83,29 @@ def mock_exam_readiness(state: Any, subject: str) -> dict[str, Any]:
     if summary is None:
         return {"score": 0, "label": "暂无数据", "gaps": [], "blueprint": []}
 
-    phase_policy = get_subject_phase(subject)
+    phase_policy = get_subject_phase(subject, db_path=db_path)
     exam_scope = phase_policy.get("exam_scope") if isinstance(phase_policy, dict) else None
 
     bkt = [
         item
         for item in state.bkt_alerts
         if item.get("subject") == subject
-        and is_in_exam_scope(subject, item.get("module"), item.get("topic"))
+        and is_in_exam_scope(
+            subject, item.get("module"), item.get("topic"),
+            db_path=db_path, model_path=model_path,
+        )
     ]
     low_mastery = sorted(bkt, key=lambda item: float(item.get("mastery_probability", 0)))
     try:
-        source_records = getattr(state, "raw_records", ()) or load_raw_records(DEFAULT_DB_PATH)
+        source_records = getattr(state, "raw_records", ()) or load_raw_records(db_path)
         records = [
             item
             for item in source_records
             if item.get("subject") == subject
-            and is_in_exam_scope(subject, item.get("module"), item.get("topic"))
+            and is_in_exam_scope(
+                subject, item.get("module"), item.get("topic"),
+                db_path=db_path, model_path=model_path,
+            )
         ]
     except Exception:
         source_records = []
@@ -105,7 +117,13 @@ def mock_exam_readiness(state: Any, subject: str) -> dict[str, Any]:
     )
     composite_templates = [item for item in COMPOSITE_TEMPLATES if item.subject == subject]
 
-    scope_stats = exam_scope_submodule_stats(subject, records=source_records)
+    scope_stats = exam_scope_submodule_stats(
+        subject,
+        model=getattr(state, "model_data", None),
+        records=source_records,
+        db_path=db_path,
+        model_path=model_path,
+    )
     scoped_topic_count = sum(int(item.get("topic_count") or 0) for item in scope_stats)
     scoped_covered_count = sum(int(item.get("covered_count") or 0) for item in scope_stats)
     coverage = scoped_covered_count / scoped_topic_count if scoped_topic_count else 0.0
@@ -137,7 +155,7 @@ def mock_exam_readiness(state: Any, subject: str) -> dict[str, Any]:
         "blueprint": _blueprint_for_subject(subject, exam_scope),
         "recent_problem_count": recent_problem_count,
         "composite_template_count": len(composite_templates),
-        "exam_scope": exam_scope_label(subject),
+        "exam_scope": exam_scope_label(subject, db_path=db_path),
         "scope_submodules": scope_stats,
         "scope_topic_count": scoped_topic_count,
         "scope_covered_count": scoped_covered_count,

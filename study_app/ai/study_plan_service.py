@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 
 from study_app.ai.providers import load_llm_settings
 from study_app.core.active_subjects import require_activity_subject
@@ -11,6 +12,22 @@ from study_app.core.local_study_plan import (
     study_plan_llm_payload,
 )
 from study_app.data.database import study_plan_signature
+from study_app.data.db_runtime import DEFAULT_DB_PATH
+
+
+def _injected_path_kwargs(
+    db_path: str | Path,
+    model_path: str | Path | None,
+    records_path: str | Path | None = None,
+) -> dict[str, object]:
+    if Path(db_path) == Path(DEFAULT_DB_PATH) and model_path is None and records_path is None:
+        return {}
+    values: dict[str, object] = {"db_path": db_path}
+    if model_path is not None:
+        values["model_path"] = model_path
+    if records_path is not None:
+        values["records_path"] = records_path
+    return values
 
 
 @dataclass(frozen=True)
@@ -65,11 +82,22 @@ def should_upgrade_plan_to_llm(saved_plan: dict) -> bool:
     return "LLM \u589e\u5f3a\u8ba1\u5212" not in evidence_text and "LLM \u589e\u5f3a" not in evidence_text
 
 
-def current_study_plan_signature(state: DashboardState, subject_name: str | None) -> str:
+def current_study_plan_signature(
+    state: DashboardState,
+    subject_name: str | None,
+    *,
+    db_path: str | Path = DEFAULT_DB_PATH,
+    model_path: str | Path | None = None,
+    records_path: str | Path | None = None,
+) -> str:
     return study_plan_signature(
         {
             "model_version": 16,
-            "plan_payload": study_plan_llm_payload(state, subject_name),
+            "plan_payload": study_plan_llm_payload(
+                state,
+                subject_name,
+                **_injected_path_kwargs(db_path, model_path),
+            ),
         }
     )
 
@@ -137,9 +165,13 @@ def should_refresh_plan_for_model(
     return any(pattern in text for pattern in stale_patterns)
 
 
-def llm_plan_unavailable_hint() -> str:
+def llm_plan_unavailable_hint(db_path: str | Path = DEFAULT_DB_PATH) -> str:
     try:
-        settings = load_llm_settings()
+        settings = (
+            load_llm_settings()
+            if Path(db_path) == Path(DEFAULT_DB_PATH)
+            else load_llm_settings(db_path=db_path)
+        )
     except Exception:
         return ""
     if not settings.enabled or settings.provider == "local":
@@ -156,6 +188,9 @@ def generate_study_plan_with_optional_llm(
     subject_name: str | None = None,
     *,
     revision_token=None,
+    db_path: str | Path = DEFAULT_DB_PATH,
+    model_path: str | Path | None = None,
+    records_path: str | Path | None = None,
 ) -> tuple[dict[str, list[str]], str]:
     def checked(result: tuple[dict[str, list[str]], str]):
         from study_app.core.async_tasks import revalidate_subject_revision
@@ -165,36 +200,60 @@ def generate_study_plan_with_optional_llm(
 
     if subject_name:
         require_activity_subject(state, subject_name, "生成每日学习计划")
+    path_kwargs = _injected_path_kwargs(db_path, model_path, records_path)
+    local_path_kwargs = {
+        key: value for key, value in path_kwargs.items()
+        if key in {"db_path", "model_path"}
+    }
     if subject_name == "计算机科学":
-        return checked((generate_study_plan(state, subject_name), "本地 OJ 计划已生成。"))
+        return checked((generate_study_plan(state, subject_name, **local_path_kwargs), "本地 OJ 计划已生成。"))
     from study_app.ai.providers import is_llm_feature_enabled
 
-    if not is_llm_feature_enabled("plan_generation"):
-        return checked((generate_study_plan(state, subject_name), "local"))
+    enabled = (
+        is_llm_feature_enabled("plan_generation")
+        if Path(db_path) == Path(DEFAULT_DB_PATH)
+        else is_llm_feature_enabled("plan_generation", db_path=db_path)
+    )
+    if not enabled:
+        return checked((generate_study_plan(state, subject_name, **local_path_kwargs), "local"))
     from study_app.ai.study_plan_generator import generate_plan_with_llm
     from study_app.core.study_phase import ScopeValidationError
 
-    payload = study_plan_llm_payload(state, subject_name)
+    payload = study_plan_llm_payload(
+        state, subject_name, **_injected_path_kwargs(db_path, model_path)
+    )
     try:
-        plan = generate_plan_with_llm(payload)
+        plan_kwargs = {}
+        if Path(db_path) != Path(DEFAULT_DB_PATH) or model_path is not None:
+            plan_kwargs = {"db_path": db_path, "model_path": model_path}
+        plan = generate_plan_with_llm(payload, **plan_kwargs)
     except ScopeValidationError:
         raise
     except Exception as error:
-        plan = generate_study_plan(state, subject_name)
+        plan = generate_study_plan(state, subject_name, **local_path_kwargs)
         plan.setdefault("evidence", [])
-        error_text = str(error).replace("\n", " ")[:300]
-        plan["evidence"].append(f"LLM \u589e\u5f3a\u8ba1\u5212\u672a\u901a\u8fc7\u6821\u9a8c\uff0c\u5df2\u663e\u793a\u672c\u5730\u8ba1\u5212\u3002\u539f\u56e0\u6458\u8981\uff1a{error_text}")
-        return checked((plan, f"\u5df2\u663e\u793a\u672c\u5730\u8ba1\u5212\uff1bLLM \u589e\u5f3a\u672a\u901a\u8fc7\u6821\u9a8c\uff1a{error_text}"))
+        error_code = type(error).__name__
+        plan["evidence"].append(
+            f"LLM 增强计划未通过本地校验（{error_code}），已显示本地计划。"
+        )
+        return checked((plan, f"已显示本地计划；LLM 增强未通过本地校验（{error_code}）。"))
     priority_topics = tuple(
         str(item.get("topic") or "").strip()
         for item in payload.get("weighted_topic_priorities", ())
         if item.get("topic")
     )
     difficulty_kwargs = {"priority_topics": priority_topics} if priority_topics else {}
+    dynamic_kwargs = _injected_path_kwargs(db_path, model_path, records_path)
+    if dynamic_kwargs:
+        dynamic_kwargs.update(
+            model=getattr(state, "model_data", None),
+            records=getattr(state, "raw_records", None),
+        )
     plan = apply_dynamic_difficulty_to_plan(
         plan,
         subject_name,
         as_of_date=state.today,
+        **dynamic_kwargs,
         **difficulty_kwargs,
     )
     plan.setdefault("evidence", [])

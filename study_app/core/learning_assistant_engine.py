@@ -24,6 +24,7 @@ from study_app.core.learning_assistant_schema import (
     default_disclosure,
     new_action_id,
     proposal_from_dict,
+    validate_action_id,
 )
 from study_app.data.database import (
     DEFAULT_DB_PATH,
@@ -33,7 +34,7 @@ from study_app.data.database import (
     list_subject_names,
     set_setting,
 )
-from study_app.paths import MODEL_PATH
+from study_app.paths import MODEL_PATH, RECORDS_PATH
 
 JOURNAL_INDEX_KEY = "learning_assistant_journal"
 JOURNAL_CAP = 400
@@ -166,11 +167,29 @@ class LearningAssistantEngine:
         db_path: Path | str = DEFAULT_DB_PATH,
         model_path: Path | str | None = None,
         actor: str = "learning_assistant",
+        *,
+        records_path: Path | str | None = None,
+        today: date | str | None = None,
     ) -> None:
         self.db_path = db_path
         self.model_path = Path(model_path) if model_path is not None else MODEL_PATH
+        self.records_path = Path(records_path) if records_path is not None else RECORDS_PATH
+        if isinstance(today, str):
+            today = date.fromisoformat(today)
+        if isinstance(today, datetime) or (today is not None and not isinstance(today, date)):
+            raise TypeError("today 必须是 datetime.date、ISO 日期字符串或 None")
+        self.today = today
         self.actor = actor
         self._lock = threading.RLock()
+
+    def _today(self) -> date:
+        return self.today or date.today()
+
+    def can_auto_execute(self, proposal: ActionProposal) -> bool:
+        """Return the current persisted policy result for one validated proposal."""
+        from study_app.core.learning_assistant_policy import can_auto_execute
+
+        return can_auto_execute(proposal.action_type, db_path=self.db_path)
 
     # ------------------------------------------------------------------
     # Journal helpers
@@ -203,15 +222,21 @@ class LearningAssistantEngine:
     def load_action(self, action_id: str) -> dict[str, Any] | None:
         return self._load_entry(action_id)
 
+    def _journal_entries(self) -> list[dict[str, Any]]:
+        from study_app.data.database import connect_readonly
+
+        with connect_readonly(self.db_path) as connection:
+            connection.execute("BEGIN")
+            index = get_setting(JOURNAL_INDEX_KEY, [], self.db_path, connection=connection)
+            if not isinstance(index, list):
+                return []
+            entries = [get_setting(self._action_key(str(action_id)), None, self.db_path,
+                                   connection=connection) for action_id in index]
+        return [entry for entry in entries if isinstance(entry, dict) and entry]
+
     def load_journal(self) -> list[dict[str, Any]]:
-        index = get_setting(JOURNAL_INDEX_KEY, [], self.db_path)
-        if not isinstance(index, list):
-            return []
         result = []
-        for action_id in index:
-            entry = self._load_entry(str(action_id))
-            if not entry:
-                continue
+        for entry in self._journal_entries():
             proposal = entry.get("proposal") or {}
             receipt = entry.get("receipt") or {}
             result.append(
@@ -459,7 +484,7 @@ class LearningAssistantEngine:
             text,
             attachments=probed,
             subject_resolver=resolver,
-            today=date.today(),
+            today=self._today(),
             action_id=new_action_id(),
             last_record_id=self._latest_record_id(),
         )
@@ -551,7 +576,7 @@ class LearningAssistantEngine:
 
         facts_map = proposal.user_facts
         subject_name = self._subject_name(proposal)
-        confirmed_at = date.today().isoformat()
+        confirmed_at = self._today().isoformat()
         try:
             if proposal.action_type == "submit_homework":
                 facts = HomeworkFacts(
@@ -695,9 +720,7 @@ class LearningAssistantEngine:
             if execution_mode not in {"user", "auto"}:
                 raise LearningAssistantError(f"未知执行授权模式：{execution_mode!r}")
             if execution_mode == "auto":
-                from study_app.core.learning_assistant_policy import can_auto_execute
-
-                if not can_auto_execute(proposal.action_type, db_path=self.db_path):
+                if not self.can_auto_execute(proposal):
                     raise LearningAssistantError(
                         f"动作 {proposal.action_type} 不在当前自动执行白名单中"
                     )
@@ -826,7 +849,7 @@ class LearningAssistantEngine:
         subject_name = self._subject_name(proposal)
         if not subject_name:
             raise LearningAssistantError("未能解析稳定学科身份，拒绝写入。")
-        confirmed_at = date.today().isoformat()
+        confirmed_at = self._today().isoformat()
         draft_problems = tuple(
             dict(item) for item in entry.get("draft_problems") or ()
         )
@@ -1065,7 +1088,7 @@ class LearningAssistantEngine:
             "effective_date"
         )
         if not target_date_text:
-            target_date_text = date.today().isoformat()
+            target_date_text = self._today().isoformat()
         target_date = date.fromisoformat(str(target_date_text))
         actor = f"la:{proposal.action_id}"[:64]
         try:
@@ -1076,7 +1099,7 @@ class LearningAssistantEngine:
                     snooze_alert(
                         alert_id,
                         target_date,
-                        date.today(),
+                        self._today(),
                         connection,
                         actor=actor,
                     )
@@ -1166,7 +1189,7 @@ class LearningAssistantEngine:
     def _execute_recompute(
         self, proposal: ActionProposal | None, entry: dict[str, Any] | None = None
     ) -> ActionReceipt:
-        as_of = date.today()
+        as_of = self._today()
         action_id = proposal.action_id if proposal is not None else new_action_id()
         warnings: list[str] = []
         alert_result = self._recompute(as_of, warnings)
@@ -1210,7 +1233,7 @@ class LearningAssistantEngine:
 
     def _post_write_recompute(self, warnings: list[str]) -> dict[str, Any] | None:
         """A18: one idempotent alert recompute right after evidence writes."""
-        result = self._recompute(date.today(), warnings)
+        result = self._recompute(self._today(), warnings)
         return result if result else None
 
     def recompute_alerts_now(self, as_of: date | None = None) -> ActionReceipt:
@@ -1241,11 +1264,7 @@ class LearningAssistantEngine:
     # Undo
     # ------------------------------------------------------------------
     def last_undoable(self) -> dict[str, Any] | None:
-        index = get_setting(JOURNAL_INDEX_KEY, [], self.db_path)
-        if not isinstance(index, list):
-            return None
-        for action_id in reversed(index):
-            entry = self._load_entry(str(action_id))
+        for entry in reversed(self._journal_entries()):
             if not entry or entry.get("state") != "completed":
                 continue
             receipt = entry.get("receipt") or {}
@@ -1259,9 +1278,10 @@ class LearningAssistantEngine:
                 }
         return None
 
-    def undo_last(self) -> ActionReceipt:
+    def undo_last(self, *, action_id: str | None = None) -> ActionReceipt:
         from study_app.data.mastery_replay import revoke_learning_record
 
+        action_id = validate_action_id(action_id) if action_id is not None else new_action_id()
         with self._lock:
             target = self.last_undoable()
             if not target:
@@ -1275,7 +1295,9 @@ class LearningAssistantEngine:
                         int(token["record_id"]),
                         db_path=self.db_path,
                         model_path=self.model_path,
-                        actor="learning_assistant_undo",
+                        # The caller can attribute recovery to this exact undo
+                        # even if later journal refresh work raises.
+                        actor=f"la:undo:{action_id}"[:64],
                     )
                 except Exception as error:
                     from study_app.data.mastery_replay import ReplayProvenanceError
@@ -1293,12 +1315,11 @@ class LearningAssistantEngine:
                 )
                 alert_id = None
             elif token.get("kind") == "recompute":
-                alert_result = self._recompute(date.today(), warnings)
+                alert_result = self._recompute(self._today(), warnings)
                 message = "已再次幂等重算预警（撤销语义：回到与当前证据一致的状态）。"
                 alert_id = None
             else:
                 raise ActionNotUndoableError(f"未知的撤销类型：{token}")
-            action_id = new_action_id()
             receipt = ActionReceipt(
                 action_id=action_id,
                 action_type="undo_last_action",
@@ -1348,9 +1369,19 @@ class LearningAssistantEngine:
         if not entry:
             raise LearningAssistantError(f"未知动作：{action_id}")
         proposal_raw = entry.get("proposal") or {}
+        source_text = str(
+            entry.get("source_text")
+            or (proposal_raw.get("user_facts") or {}).get("source_text")
+            or ""
+        )
+        attachment_paths = [
+            item["path"]
+            for item in proposal_raw.get("attachments") or ()
+            if isinstance(item, dict) and isinstance(item.get("path"), str)
+        ]
         return self.create_proposal(
-            str(proposal_raw.get("user_facts", {}).get("source_text") or ""),
-            [],
+            source_text,
+            attachment_paths,
         )
 
     # ------------------------------------------------------------------
@@ -1364,7 +1395,12 @@ class LearningAssistantEngine:
         current = state
         if current is None:
             try:
-                current = load_dashboard_state()
+                current = load_dashboard_state(
+                    model_path=self.model_path,
+                    records_path=self.records_path,
+                    today=self.today,
+                    db_path=self.db_path,
+                )
             except Exception:
                 current = None
         records = list(getattr(current, "raw_records", ()) or []) if current is not None else []

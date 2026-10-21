@@ -79,6 +79,14 @@ class DatabaseVersionTooNewError(RuntimeError):
     """Raised before writing when a newer application already owns the DB."""
 
 
+class LearningRecordPostCommitError(RuntimeError):
+    """Signal that the learning record and linked plan result are already saved."""
+
+    def __init__(self, record_id: int) -> None:
+        super().__init__("学习记录已保存，但后续题库处理失败。")
+        self.record_id = int(record_id)
+
+
 def _database_schema_version(path: Path) -> int:
     if not path.is_file():
         return 0
@@ -1378,7 +1386,15 @@ def add_learning_record(
             ).rowcount
             if changed != 1:
                 raise ValueError("学科版本在学习记录写入期间发生变化")
-    _auto_import_practice_problems(raw_record, practice_candidates, db_path=path)
+    try:
+        _auto_import_practice_problems(raw_record, practice_candidates, db_path=path)
+    except Exception as error:
+        LOGGER.error(
+            "Learning record %s was committed, but practice import failed (%s)",
+            record_id,
+            type(error).__name__,
+        )
+        raise LearningRecordPostCommitError(record_id) from None
     try:
         from study_app.data.model_progress_sync import sync_learning_record_to_model
 

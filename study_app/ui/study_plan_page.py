@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import logging
 import threading
-import time
 from dataclasses import dataclass, replace
 from functools import lru_cache
 
@@ -22,7 +21,6 @@ from study_app.core.budgeted_day_plan import BudgetPlanInput, BudgetedDayPlan, b
 from study_app.core.day_budget_input import StudyDayBudget, validate_day_budget_input, validate_subject_exam_date
 from study_app.core.plan_candidates import CandidateCollection, PlanCandidate, build_plan_candidates
 from study_app.core.practice_prompts import (
-    build_mock_exam_generation_prompt,
     build_oj_practice_list,
     build_practice_generation_prompt,
 )
@@ -72,56 +70,13 @@ from study_app.ui.activity_view import (
 
 
 _PLAN_GENERATION_WORKERS: set[object] = set()
-_CHATGPT_BRIDGE_WORKERS: set[object] = set()
-_CHATGPT_BRIDGE_LOCK = threading.Lock()
-_CHATGPT_BRIDGE_SHUTDOWN_STARTED = False
 LOGGER = logging.getLogger(__name__)
 
 
-def _shutdown_chatgpt_bridge_workers() -> None:
-    global _CHATGPT_BRIDGE_SHUTDOWN_STARTED
-    with _CHATGPT_BRIDGE_LOCK:
-        if _CHATGPT_BRIDGE_SHUTDOWN_STARTED:
-            return
-        workers = list(_CHATGPT_BRIDGE_WORKERS)
-        _CHATGPT_BRIDGE_SHUTDOWN_STARTED = True
-
-    deadline = time.monotonic() + 4.0
-    cleanup_temp_artifacts = None
-    try:
-        from study_app.integrations.chatgpt_desktop_bridge import (
-            cancel_chatgpt_pdf_generation,
-            cleanup_chatgpt_temp_artifacts as cleanup_temp_artifacts,
-            request_chatgpt_pdf_shutdown,
-        )
-
-        request_chatgpt_pdf_shutdown()
-        result = cancel_chatgpt_pdf_generation(deadline=deadline)
-        if not result.success:
-            LOGGER.error("ChatGPT PDF shutdown cancel failed (%s)", result.code)
-    except Exception as error:
-        LOGGER.error(
-            "ChatGPT PDF shutdown cancel raised (%s)",
-            type(error).__name__,
-        )
-    finally:
-        for worker in workers:
-            remaining = min(2.0, max(0.0, deadline - time.monotonic()))
-            remaining_ms = int(remaining * 1000)
-            if remaining_ms <= 0 or not worker.wait(remaining_ms):
-                LOGGER.error("ChatGPT PDF worker cleanup timed out")
-        if cleanup_temp_artifacts is not None:
-            try:
-                cleanup_temp_artifacts()
-            except Exception as error:
-                LOGGER.error(
-                    "ChatGPT temporary artifact cleanup failed (%s)",
-                    type(error).__name__,
-                )
 
 
 def generate_local_practice_for_plan_line(line: str, subject_name: str):
-    """Generate a local paper without invoking ChatGPT, a browser, or UI automation."""
+    """Generate a local practice paper using the existing practice service."""
     normalized_subject = str(subject_name or "").strip()
     if not normalized_subject:
         raise ValueError("生成本地练习卷前，请先选择一个具体学科。")
@@ -138,7 +93,7 @@ def generate_local_practice_for_plan_line(line: str, subject_name: str):
 
 def local_practice_success_message(result) -> str:
     return (
-        "本地练习卷已生成，不依赖 ChatGPT 或网络。\n\n"
+        "本地练习卷已生成，可离线使用。\n\n"
         f"题目卷：{result.question_pdf}\n"
         f"答案卷：{result.answer_pdf}\n"
         f"生成记录：{result.manifest_json}"
@@ -546,174 +501,6 @@ class _PlanGenerationSession:
         return True
 
 
-class _ChatGPTPDFSession:
-    """Own the PDF worker UI state and ignore callbacks from stale attempts."""
-
-    def __init__(self, page, progress_label, stop_button, relay_type, thread_type):
-        self.page = page
-        self.progress_label = progress_label
-        self.stop_button = stop_button
-        self.relay_type = relay_type
-        self.thread_type = thread_type
-
-    def set_busy(self, busy: bool):
-        self.stop_button.setVisible(busy)
-        self.stop_button.setDisabled(not busy)
-
-    def _watch_global_worker(self, worker):
-        def release_busy():
-            if getattr(self.page, "_chatgpt_bridge_page_alive", False):
-                self.set_busy(False)
-
-        relay = self.relay_type(on_finished=release_busy, parent=self.page)
-        worker.finished.connect(relay.finished)
-        if worker.isFinished():
-            relay.finished()
-
-    def stop(self):
-        from PySide6.QtWidgets import QMessageBox
-
-        with _CHATGPT_BRIDGE_LOCK:
-            workers = list(_CHATGPT_BRIDGE_WORKERS)
-        for worker in workers:
-            if worker.isRunning():
-                try:
-                    result = worker.cancel()
-                except Exception:
-                    QMessageBox.warning(
-                        self.page,
-                        "停止 PDF 生成失败",
-                        "未能停止当前 PDF 生成任务，请稍后重试。",
-                    )
-                    return
-                if not result.success:
-                    QMessageBox.warning(
-                        self.page,
-                        "停止 PDF 生成失败",
-                        "未能停止当前 PDF 生成任务，请稍后重试。",
-                    )
-                    return
-        for worker in workers:
-            worker.cancelled = True
-        self.set_busy(False)
-        self.progress_label.setText("已手动停止 ChatGPT PDF 生成，并清理临时提示词。")
-        QMessageBox.information(self.page, "已停止", "已停止当前 ChatGPT PDF 生成流程。")
-
-    def _detach(self, worker, token):
-        workers = getattr(self.page, "_chatgpt_bridge_threads", [])
-        if worker in workers:
-            workers.remove(worker)
-        if not getattr(self.page, "_chatgpt_bridge_page_alive", False):
-            return False
-        is_current = getattr(self.page, "_chatgpt_pdf_active_token", None) is token
-        if is_current and not any(item.isRunning() for item in workers):
-            self.set_busy(False)
-        return is_current
-
-    def _completed(self, result, original_prompt, worker, token):
-        from PySide6.QtWidgets import QApplication, QMessageBox
-
-        if not self._detach(worker, token):
-            return
-        if worker.cancelled:
-            self.progress_label.setText("ChatGPT PDF 生成已手动停止。")
-            return
-        if result.success:
-            if result.code != "pdf_opened":
-                self.progress_label.setText("PDF 已下载，但未能自动打开。")
-                QMessageBox.warning(
-                    self.page,
-                    "PDF 已下载但未打开",
-                    f"PDF 已安全下载，但系统未能自动打开文件。\n\n文件位置：\n{result.pdf_path}",
-                )
-                return
-            self.progress_label.setText("ChatGPT 已生成 PDF，并已自动打开。")
-            QMessageBox.information(
-                self.page,
-                "PDF 已生成",
-                f"ChatGPT 已完成生成，PDF 已归档并自动打开。\n\n临时文件位置：\n{result.pdf_path}",
-            )
-            return
-        QApplication.clipboard().setText(original_prompt)
-        self.progress_label.setText("ChatGPT 自动生成 PDF 失败，提示词已复制。")
-        QMessageBox.warning(
-            self.page,
-            "ChatGPT 自动生成失败",
-            "ChatGPT 未能完成 PDF 生成。为避免丢失，出题提示词已复制到剪贴板。",
-        )
-
-    def _failed(self, _error, worker, token):
-        from PySide6.QtWidgets import QMessageBox
-
-        if not self._detach(worker, token):
-            return
-        if worker.cancelled:
-            self.progress_label.setText("ChatGPT PDF 生成已手动停止。")
-            return
-        self.progress_label.setText("ChatGPT 自动生成 PDF 失败，请检查桌面端状态后重试。")
-        QMessageBox.warning(
-            self.page,
-            "ChatGPT 自动生成失败",
-            "ChatGPT 桌面桥接发生错误，请检查桌面端状态后重试。",
-        )
-
-    def _show_existing_worker(self, worker):
-        from PySide6.QtWidgets import QMessageBox
-
-        self.set_busy(True)
-        if worker is not None:
-            self._watch_global_worker(worker)
-        QMessageBox.information(
-            self.page,
-            "正在生成 PDF",
-            "已有一个 ChatGPT PDF 生成任务正在运行。你可以点击“停止 PDF 生成”后再启动新的任务。",
-        )
-
-    def start(self, prompt: str):
-        from PySide6.QtWidgets import QMessageBox
-
-        with _CHATGPT_BRIDGE_LOCK:
-            active_threads = list(_CHATGPT_BRIDGE_WORKERS)
-        if active_threads:
-            self._show_existing_worker(active_threads[0])
-            return
-        task_token = object()
-        self.page._chatgpt_pdf_active_token = task_token
-        self.set_busy(True)
-        self.progress_label.setText("正在让 ChatGPT 生成 PDF；生成期间可以继续使用学习应用...")
-        thread = self.thread_type(prompt, self.page)
-        thread.task_token = task_token
-        bridge_threads = getattr(self.page, "_chatgpt_bridge_threads", [])
-        bridge_threads.append(thread)
-        self.page._chatgpt_bridge_threads = bridge_threads
-        relay = self.relay_type(
-            on_completed=lambda result, original_prompt: self._completed(
-                result, original_prompt, thread, task_token
-            ),
-            on_failed=lambda error: self._failed(error, thread, task_token),
-            parent=self.page,
-        )
-        thread.completed.connect(relay.completed)
-        thread.failed.connect(relay.failed)
-        thread.finished.connect(relay.finished)
-        try:
-            started = thread.start()
-        except Exception:
-            bridge_threads.remove(thread)
-            relay.deleteLater()
-            self.set_busy(False)
-            QMessageBox.warning(
-                self.page,
-                "启动 PDF 生成失败",
-                "未能启动 PDF 生成任务，请稍后重试。",
-            )
-            return
-        if not started:
-            bridge_threads.remove(thread)
-            relay.deleteLater()
-            with _CHATGPT_BRIDGE_LOCK:
-                active_threads = list(_CHATGPT_BRIDGE_WORKERS)
-            self._show_existing_worker(active_threads[0] if active_threads else None)
 
 
 def _budget_plan_row(row: dict, *, preview: bool, on_check):
@@ -894,70 +681,8 @@ def _worker_types():
                 self._finished.set()
                 self.finished.emit()
 
-    class ChatGPTBridgeThread(QObject):
-        completed = Signal(object, str)
-        failed = Signal(str)
-        finished = Signal()
 
-        def __init__(self, prompt, parent=None):
-            super().__init__(None)
-            self.prompt = prompt
-            self.cancelled = False
-            self._finished = threading.Event()
-            self._thread = None
-
-        def start(self):
-            if self.isRunning():
-                return False
-            with _CHATGPT_BRIDGE_LOCK:
-                if _CHATGPT_BRIDGE_SHUTDOWN_STARTED or _CHATGPT_BRIDGE_WORKERS:
-                    return False
-                _CHATGPT_BRIDGE_WORKERS.add(self)
-            self._finished.clear()
-            try:
-                self._thread = threading.Thread(
-                    target=self.run,
-                    name="chatgpt-pdf-generation",
-                    daemon=True,
-                )
-                self._thread.start()
-            except Exception:
-                with _CHATGPT_BRIDGE_LOCK:
-                    _CHATGPT_BRIDGE_WORKERS.discard(self)
-                self._thread = None
-                self._finished.set()
-                raise
-            return True
-
-        def isRunning(self):
-            return self._thread is not None and self._thread.is_alive()
-
-        def isFinished(self):
-            return self._finished.is_set()
-
-        def wait(self, timeout=None):
-            seconds = None if timeout is None else max(0, timeout) / 1000
-            return self._finished.wait(seconds)
-
-        def run(self):
-            from study_app.integrations.chatgpt_desktop_bridge import generate_pdf_with_chatgpt
-
-            try:
-                self.completed.emit(generate_pdf_with_chatgpt(self.prompt), self.prompt)
-            except Exception as error:
-                self.failed.emit(str(error))
-            finally:
-                with _CHATGPT_BRIDGE_LOCK:
-                    _CHATGPT_BRIDGE_WORKERS.discard(self)
-                self._finished.set()
-                self.finished.emit()
-
-        def cancel(self):
-            from study_app.integrations.chatgpt_desktop_bridge import cancel_chatgpt_pdf_generation
-
-            return cancel_chatgpt_pdf_generation()
-
-    return WorkerSignalRelay, PlanGenerationThread, ChatGPTBridgeThread
+    return WorkerSignalRelay, PlanGenerationThread
 
 
 def _edit_final_review_modes(parent, state: DashboardState) -> list[str] | None:
@@ -1336,14 +1061,8 @@ class _DetailedPlanPanel:
         placeholder.setWordWrap(True)
         self.plan_layout.addWidget(placeholder)
         self.layout.addWidget(self.plan_host)
-        self.pdf_session = _ChatGPTPDFSession(
-            self.page.content, self.progress_label, self.stop_pdf_button, self.page.WorkerSignalRelay, self.page.ChatGPTBridgeThread
-        )
-        self.page.content._chatgpt_pdf_session = self.pdf_session
-        self.stop_pdf_button.clicked.connect(self.pdf_session.stop)
-
     def _build_tools(self):
-        from PySide6.QtWidgets import QComboBox, QGridLayout, QPushButton, QSizePolicy, QVBoxLayout, QWidget
+        from PySide6.QtWidgets import QGridLayout, QPushButton, QSizePolicy, QVBoxLayout, QWidget
 
         actions = QGridLayout()
         actions.setHorizontalSpacing(10)
@@ -1358,24 +1077,11 @@ class _DetailedPlanPanel:
         self.clear_button.setObjectName("GhostButton")
         self.copy_context_button = QPushButton("复制题库上下文")
         self.copy_context_button.setObjectName("GhostButton")
-        self.mock_exam_mode = QComboBox()
-        self.mock_exam_mode.addItem("诊断卷", "diagnostic")
-        self.mock_exam_mode.addItem("标准期末卷", "standard")
-        self.mock_exam_mode.addItem("冲刺专题卷", "sprint")
-        self.mock_exam_button = QPushButton("生成模拟卷 PDF")
-        self.mock_exam_button.setObjectName("GhostButton")
-        self.stop_pdf_button = QPushButton("停止 PDF 生成")
-        self.stop_pdf_button.setObjectName("DangerButton")
-        self.stop_pdf_button.setVisible(False)
-        self.stop_pdf_button.setDisabled(True)
         for control in (
             self.generate_button,
             self.final_review_button,
             self.clear_button,
             self.copy_context_button,
-            self.mock_exam_mode,
-            self.mock_exam_button,
-            self.stop_pdf_button,
         ):
             control.setSizePolicy(
                 QSizePolicy.Policy.Expanding,
@@ -1385,9 +1091,6 @@ class _DetailedPlanPanel:
         actions.addWidget(self.final_review_button, 1, 0, 1, 2)
         actions.addWidget(self.clear_button, 1, 2)
         actions.addWidget(self.copy_context_button, 1, 3)
-        actions.addWidget(self.mock_exam_mode, 2, 0, 1, 2)
-        actions.addWidget(self.mock_exam_button, 2, 2)
-        actions.addWidget(self.stop_pdf_button, 2, 3)
         self.widget = QWidget()
         self.layout = QVBoxLayout(self.widget)
         self.layout.setContentsMargins(0, 0, 0, 0)
@@ -1404,8 +1107,6 @@ class _DetailedPlanPanel:
         self.generate_button.setDisabled(busy)
         self.final_review_button.setDisabled(busy)
         self.clear_button.setDisabled(busy)
-        self.mock_exam_button.setDisabled(busy)
-        self.mock_exam_mode.setDisabled(busy)
         self.page.subject_scope.setDisabled(busy)
         if busy:
             self.generate_button.setText("正在生成...")
@@ -1601,7 +1302,6 @@ class _DetailedPlanPanel:
                 on_result=self.record_plan_result,
                 on_check=self.record_plan_check,
                 on_copy_practice_prompt=self.copy_practice_prompt if key == "short" else None,
-                on_send_chatgpt=self.send_practice_prompt_to_chatgpt if key == "short" else None,
                 on_generate_local_pdf=self.generate_local_practice_pdf if key == "short" else None,
                 item_by_hash=item_by_hash,
                 result_predicate=is_plan_homework_item,
@@ -1685,18 +1385,6 @@ class _DetailedPlanPanel:
         else:
             QMessageBox.information(self.page.content, "已复制", "已复制出题提示词，可直接粘贴给 Codex、GPT 或其他 LLM。")
 
-    def send_practice_prompt_to_chatgpt(self, line: str):
-        if is_oj_plan_homework(line):
-            from PySide6.QtWidgets import QMessageBox
-
-            QMessageBox.information(
-                self.page.content,
-                "无需生成 PDF",
-                "算法设计与 OJ 训练使用 LeetCode 官方原题和官方测试集；系统已在计划中直接匹配题目，不再生成出题提示词。",
-            )
-            return
-        prompt = build_practice_generation_prompt(line, self.page.state, self.page.subject_scope.currentData() or None)
-        self.pdf_session.start(prompt)
 
     def generate_local_practice_pdf(self, line: str):
         from PySide6.QtWidgets import QMessageBox
@@ -1734,22 +1422,6 @@ class _DetailedPlanPanel:
         QApplication.clipboard().setText("\n\n---\n\n".join(exports))
         QMessageBox.information(self.page.content, "已复制", f"已复制 {len(exports)} 条练习上下文。OJ 作业会直接复制 LeetCode 原题清单。")
 
-    def send_mock_exam_pdf(self):
-        from PySide6.QtWidgets import QMessageBox
-
-        subject_name = self.page.subject_scope.currentData() or None
-        if not subject_name:
-            QMessageBox.information(self.page.content, "请选择学科", "生成模拟卷前，请先在计划范围中选择一个具体学科。")
-            return
-        try:
-            prompt = build_mock_exam_generation_prompt(
-                self.page.state, subject_name,
-                str(self.mock_exam_mode.currentData() or "diagnostic"),
-            )
-        except Exception as error:
-            QMessageBox.warning(self.page.content, "模拟卷提示词生成失败", str(error))
-            return
-        self.pdf_session.start(prompt)
 
     def maybe_show_completed_day_feedback(self):
         from PySide6.QtWidgets import QMessageBox
@@ -1769,7 +1441,7 @@ class _StudyPlanPage:
         from PySide6.QtWidgets import QApplication, QScrollArea, QSizePolicy, QVBoxLayout, QWidget
         from PySide6.QtCore import Qt
         self.state = state
-        self.WorkerSignalRelay, self.PlanGenerationThread, self.ChatGPTBridgeThread = _worker_types()
+        self.WorkerSignalRelay, self.PlanGenerationThread = _worker_types()
         self.scroll = QScrollArea()
         self.scroll.setWidgetResizable(True)
         self.scroll.setFrameShape(QScrollArea.Shape.NoFrame)
@@ -1777,12 +1449,6 @@ class _StudyPlanPage:
         self.content = QWidget()
         self.content.setMinimumWidth(0)
         self.content.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
-        self.content._chatgpt_bridge_page_alive = True
-        self.content.destroyed.connect(self.mark_chatgpt_page_destroyed)
-        app = QApplication.instance()
-        if app is not None and not getattr(app, "_chatgpt_bridge_shutdown_connected", False):
-            app.aboutToQuit.connect(_shutdown_chatgpt_bridge_workers)
-            app._chatgpt_bridge_shutdown_connected = True
         self.layout = QVBoxLayout(self.content)
         self.layout.setContentsMargins(30, 28, 30, 30)
         self.layout.setSpacing(18)
@@ -1798,7 +1464,6 @@ class _StudyPlanPage:
         self.detail.final_review_button.clicked.connect(lambda _checked=False: self.detail.manage_final_review_modes())
         self.detail.clear_button.clicked.connect(clear_handler)
         self.detail.copy_context_button.clicked.connect(lambda _checked=False: self.detail.copy_plan_practice_context())
-        self.detail.mock_exam_button.clicked.connect(lambda _checked=False: self.detail.send_mock_exam_pdf())
         self.subject_scope.currentIndexChanged.connect(self.refresh_scope_views)
         self.detail.refresh_phase_status()
         self.detail.render_saved_plan(get_active_study_plan(self.subject_scope.currentData() or None), reload_state=False)
@@ -1845,8 +1510,6 @@ class _StudyPlanPage:
         scope_row.addWidget(self.subject_scope, 1)
         self.layout.addLayout(scope_row)
 
-    def mark_chatgpt_page_destroyed(self):
-        setattr(self.content, "_chatgpt_bridge_page_alive", False)
 
     def refresh_scope_views(self, _index=None):
         self.budget.invalidate_preview()
@@ -1904,7 +1567,6 @@ def plan_section_card(
     on_result=None,
     on_check=None,
     on_copy_practice_prompt=None,
-    on_send_chatgpt=None,
     on_generate_local_pdf=None,
     item_by_hash: dict[str, dict] | None = None,
     result_predicate=None,
@@ -2005,16 +1667,6 @@ def plan_section_card(
             local_button.clicked.connect(local_handler)
             handlers.append(local_handler)
             action_buttons.append(local_button)
-        if is_homework_row and on_send_chatgpt and not is_oj_row:
-            send_button = QPushButton("让 ChatGPT 生成 PDF")
-            send_button.setObjectName("GhostButton")
-
-            def send_handler(_checked=False, source_text=text):
-                on_send_chatgpt(source_text)
-
-            send_button.clicked.connect(send_handler)
-            handlers.append(send_handler)
-            action_buttons.append(send_button)
         for index, button in enumerate(action_buttons):
             button.setSizePolicy(
                 QSizePolicy.Policy.Expanding,
